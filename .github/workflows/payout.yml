@@ -1,0 +1,47 @@
+# .github/workflows/payout.yml
+name: Weekly fantasy payout
+
+on:
+  schedule:
+    - cron: "0 13 * * 2"      # Tuesdays 13:00 UTC = 6am PT, after MNF
+  workflow_dispatch:
+    inputs:
+      week:
+        description: "NFL week (blank = current)"
+        required: false
+      dry_run:
+        description: "Dry run (don't record as paid)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  payout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run payout bot
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          VENMO_HANDLES: ${{ secrets.VENMO_HANDLES }}
+        run: |
+          ARGS=""
+          [ -n "${{ github.event.inputs.week }}" ] && ARGS="$ARGS --week ${{ github.event.inputs.week }}"
+          [ "${{ github.event.inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
+          python sleeper_payout_bot.py $ARGS
+
+      - name: Publish results
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          [ -f paid_weeks.json ] || exit 0
+          git config user.name "payout-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add paid_weeks.json docs/data
+          git diff --cached --quiet || git commit -m "Publish weekly results"
+          git push

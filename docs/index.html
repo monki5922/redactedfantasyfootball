@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>League Payouts</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #14171a; --muted: #667085;
+  --line: #e3e6ea; --accent: #1a7f5a; --accent-soft: #e6f4ee; --gold: #9a6b00;
+  --gold-soft: #fdf3dd; --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1114; --panel: #171b20; --ink: #e8eaed; --muted: #939ba7;
+    --line: #262c33; --accent: #3ecf8e; --accent-soft: #12281f; --gold: #e5b95c;
+    --gold-soft: #2a2214;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+header { margin-bottom: 28px; }
+h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
+.sub { color: var(--muted); font-size: 13px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+}
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+     color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+.prizes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .prizes { grid-template-columns: 1fr; } }
+.prize { border-radius: 10px; padding: 16px; border: 1px solid transparent; }
+.prize.hs { background: var(--gold-soft); border-color: var(--gold); }
+.prize.ch { background: var(--accent-soft); border-color: var(--accent); }
+.prize .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+                font-weight: 600; opacity: 0.85; margin-bottom: 8px; }
+.prize.hs .label { color: var(--gold); }
+.prize.ch .label { color: var(--accent); }
+.prize .who { font-size: 20px; font-weight: 650; letter-spacing: -0.01em;
+              word-break: break-word; }
+.prize .detail { font-size: 13px; color: var(--muted); margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+     color: var(--muted); font-weight: 600; padding: 0 8px 8px; }
+th.n, td.n { text-align: right; }
+td { padding: 9px 8px; border-top: 1px solid var(--line); }
+tr.win td { font-weight: 650; }
+tr.win td:first-child::after {
+  content: "won"; margin-left: 8px; font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);
+  background: var(--accent-soft); padding: 2px 6px; border-radius: 4px;
+}
+.rank { color: var(--muted); width: 28px; }
+nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+nav button {
+  font: inherit; font-size: 13px; padding: 6px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+}
+nav button:hover { color: var(--ink); }
+nav button[aria-current="true"] {
+  background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 600;
+}
+.empty { color: var(--muted); text-align: center; padding: 40px 20px; }
+.empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 6px; }
+footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 32px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>League Payouts</h1>
+    <div class="sub" id="sub">Loading…</div>
+  </header>
+  <div id="app"></div>
+  <footer>Updated automatically every Tuesday morning from Sleeper's final numbers.</footer>
+</div>
+
+<script>
+const $ = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstChild; };
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = (n) => '$' + n.toFixed(2).replace(/\.00$/, '');
+const app = document.getElementById('app');
+const sub = document.getElementById('sub');
+
+function empty(msg) {
+  sub.textContent = '';
+  app.innerHTML = '';
+  app.append($(`<div class="card"><div class="empty"><strong>Nothing to show yet</strong>${esc(msg)}</div></div>`));
+}
+
+function prize(kind, label, block) {
+  if (!block) return '';
+  if (block.manual || !block.winners || !block.winners.length) {
+    return `<div class="prize ${kind}"><div class="label">${esc(label)}</div>
+            <div class="who">Settled manually</div>
+            <div class="detail">${esc(block.title || '')}</div></div>`;
+  }
+  const share = block.prize / block.winners.length;
+  const tie = block.winners.length > 1 ? ` · ${block.winners.length}-way tie, ${money(share)} each` : '';
+  return `<div class="prize ${kind}">
+            <div class="label">${esc(label)} · ${money(block.prize)}</div>
+            <div class="who">${esc(block.winners.join(', '))}</div>
+            <div class="detail">${esc(block.detail || '')}${tie}</div>
+          </div>`;
+}
+
+function renderWeek(w) {
+  const ch = w.challenge;
+  const winners = new Set([...(w.high_score?.winners || []), ...(ch?.winners || [])].map(n => n.split(' (wk')[0]));
+
+  const cards = [$(`<div class="card">
+      <h2>Week ${w.week}</h2>
+      <div class="prizes">
+        ${prize('hs', 'High score', w.high_score)}
+        ${prize('ch', ch ? ch.title : 'Challenge', ch)}
+      </div></div>`)];
+
+  if (ch && ch.leaderboard && ch.leaderboard.length) {
+    cards.push($(`<div class="card"><h2>${esc(ch.title)} — full board</h2>
+      <table><thead><tr><th class="rank">#</th><th>Manager</th><th class="n">Result</th></tr></thead>
+      <tbody>${ch.leaderboard.map((r, i) =>
+        `<tr class="${i === 0 ? 'win' : ''}"><td class="rank">${i + 1}</td><td>${esc(r.name)}</td>
+         <td class="n">${esc(r.detail)}</td></tr>`).join('')}</tbody></table></div>`));
+  }
+
+  cards.push($(`<div class="card"><h2>Scores</h2>
+    <table><thead><tr><th class="rank">#</th><th>Manager</th><th class="n">Points</th></tr></thead>
+    <tbody>${w.scores.map((s, i) =>
+      `<tr class="${winners.has(s.name) ? 'win' : ''}"><td class="rank">${i + 1}</td>
+       <td>${esc(s.name)}</td><td class="n">${s.points.toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`));
+
+  return cards;
+}
+
+function renderSeason(season) {
+  if (!season || !season.length) return null;
+  return $(`<div class="card"><h2>Season standings</h2>
+    <table><thead><tr><th class="rank">#</th><th>Manager</th><th class="n">High</th>
+      <th class="n">Chal.</th><th class="n">Best week</th><th class="n">Won</th></tr></thead>
+    <tbody>${season.map((r, i) =>
+      `<tr><td class="rank">${i + 1}</td><td>${esc(r.name)}</td>
+       <td class="n">${r.high_score_wins}</td><td class="n">${r.challenge_wins}</td>
+       <td class="n">${r.best_score.toFixed(2)}</td>
+       <td class="n">${r.winnings ? money(r.winnings) : '—'}</td></tr>`).join('')}</tbody></table></div>`);
+}
+
+async function show(week, index) {
+  const w = await fetch(`data/weeks/${week}.json`).then(r => r.json());
+  app.innerHTML = '';
+  if (index.weeks.length > 1) {
+    const nav = $(`<nav>${index.weeks.slice().reverse().map(n =>
+      `<button data-w="${n}" aria-current="${n === week}">Week ${n}</button>`).join('')}</nav>`);
+    nav.addEventListener('click', e => {
+      const b = e.target.closest('button[data-w]');
+      if (b) show(Number(b.dataset.w), index);
+    });
+    app.append(nav);
+  }
+  renderWeek(w).forEach(c => app.append(c));
+  const s = renderSeason(index.season);
+  if (s) app.append(s);
+}
+
+(async () => {
+  let index;
+  try {
+    const r = await fetch('data/index.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    index = await r.json();
+  } catch {
+    return empty('The first results post the Tuesday after week 1 wraps up.');
+  }
+  if (!index.weeks || !index.weeks.length) {
+    return empty('The first results post the Tuesday after week 1 wraps up.');
+  }
+  const d = new Date(index.updated);
+  sub.textContent = isNaN(d) ? '' : 'Last updated ' +
+    d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) + ' at ' +
+    d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  show(index.latest_week, index);
+})();
+</script>
+</body>
+</html>
