@@ -265,16 +265,6 @@ async function loadLeague() {
     j(`${API}/league/${LEAGUE_ID}/matchups/${i + 1}`).catch(() => [])));
   const weeks = {}; mws.forEach((m, i) => weeks[i + 1] = m || []);
 
-  let drafted = {};
-  try {
-    const drafts = await j(`${API}/league/${LEAGUE_ID}/drafts`);
-    if (drafts && drafts.length) {
-      for (const pick of await j(`${API}/draft/${drafts[0].draft_id}/picks`)) {
-        (drafted[pick.roster_id] = drafted[pick.roster_id] || new Set()).add(pick.player_id);
-      }
-    }
-  } catch {}
-
   let [pos, bracket, losers] = await Promise.all([
     loadPositions(),
     j(`${API}/league/${LEAGUE_ID}/winners_bracket`).catch(() => []),
@@ -287,7 +277,7 @@ async function loadLeague() {
     ms.some(m => (m.starters || []).some(pid => pid && !pos[pid])));
   if (unknown) pos = await loadPositions(true);
 
-  return { state, league, names, slots, weeks, pos, drafted, bracket, losers, rosters };
+  return { state, league, names, slots, weeks, pos, bracket, losers, rosters };
 }
 
 /* ----------------------------- challenges ------------------------------ */
@@ -334,12 +324,9 @@ const CHALLENGES = [
   { week: 6,  title: 'Kicker & defense combo', note: 'Highest combined kicker + defense points',
     fmt: v => `K+DEF ${n2(v)} pts`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id],
       value: starterPts(m).filter(([pid]) => ['K','DEF'].includes(L.pos[pid])).reduce((a, [, p]) => a + p, 0) })) },
-  { week: 7,  title: 'Waiver-wire hero', note: 'Highest-scoring starter that roster did not draft',
-    needs: (L) => Object.keys(L.drafted || {}).length > 0,
-    needsWhy: 'waiting on draft results from Sleeper',
-    fmt: v => `undrafted starter ${n2(v)} pts`, rows: (L, ms) => ms.map(m => {
-      const own = L.drafted[m.roster_id] || new Set();
-      return { name: L.names[m.roster_id], value: Math.max(0, ...starterPts(m).filter(([pid]) => !own.has(pid)).map(([, p]) => p)) }; }) },
+  { week: 7,  title: 'Ugly win', note: 'Lowest score that still won its matchup', low: true,
+    fmt: v => `won with ${n2(v)}`,
+    rows: (L, ms) => pairs(ms).map(([w]) => ({ name: L.names[w.roster_id], value: w.points })) },
   { week: 8,  title: 'Perfect lineup', note: 'Fewest points left on the bench vs. the optimal lineup', low: true,
     fmt: v => `left ${n2(v)} on bench`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id], value: optimal(m, L.slots, L.pos) - m.points })) },
   { week: 9,  title: 'Top RB', note: 'Highest-scoring starting running back', fmt: v => `RB ${n2(v)} pts`, rows: topPos('RB') },

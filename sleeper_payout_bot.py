@@ -65,7 +65,6 @@ class League:
 
         self.matchups = get(f"{API}/league/{LEAGUE_ID}/matchups/{week}")
         self._players = None
-        self._drafted = None
 
     @property
     def players(self):
@@ -75,18 +74,6 @@ class League:
 
     def pos(self, pid):
         return self.players.get(pid, {}).get("position", "?")
-
-    @property
-    def drafted(self):
-        """roster_id -> set of player_ids that roster drafted."""
-        if self._drafted is None:
-            d = {}
-            drafts = get(f"{API}/league/{LEAGUE_ID}/drafts")
-            if drafts:
-                for p in get(f"{API}/draft/{drafts[0]['draft_id']}/picks"):
-                    d.setdefault(p["roster_id"], set()).add(p["player_id"])
-            self._drafted = d
-        return self._drafted
 
     def name(self, m):
         return self.names[m["roster_id"]]
@@ -161,13 +148,8 @@ def k_def(L):
             for m in L.matchups]
     return rows, False, "K+DEF {:.2f} pts"
 
-def waiver_hero(L):
-    rows = []
-    for m in L.matchups:
-        own = L.drafted.get(m["roster_id"], set())
-        pts = [p for pid, p in L.starter_pts(m) if pid not in own]
-        rows.append((max(pts, default=0.0), L.name(m)))
-    return rows, False, "undrafted starter {:.2f} pts"
+def ugly_win(L):
+    return [(w["points"], L.name(w)) for w, _, _ in L.games()], True, "won with {:.2f}"
 
 def perfect_lineup(L):
     return [(L.optimal_score(m) - m["points"], L.name(m)) for m in L.matchups], True, "left {:.2f} on bench"
@@ -206,7 +188,7 @@ CHALLENGES = {
     4:  ("Biggest blowout", biggest_blowout),
     5:  ("Top QB", top_pos("QB")),
     6:  ("Kicker & defense combo", k_def),
-    7:  ("Waiver-wire hero", waiver_hero),
+    7:  ("Ugly win", ugly_win),
     8:  ("Perfect lineup", perfect_lineup),
     9:  ("Top RB", top_pos("RB")),
     10: ("Heartbreaker", heartbreaker),
@@ -226,7 +208,7 @@ CHALLENGE_NOTES = {
     4:  "Largest margin of victory",
     5:  "Highest-scoring starting quarterback",
     6:  "Highest combined kicker + defense points",
-    7:  "Highest-scoring starter that roster did not draft",
+    7:  "Lowest score that still won its matchup",
     8:  "Fewest points left on the bench vs. the optimal lineup",
     9:  "Highest-scoring starting running back",
     10: "Closest losing margin - the prize goes to the loser",

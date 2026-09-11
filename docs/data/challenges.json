@@ -39,8 +39,8 @@
     },
     {
       "week": 7,
-      "title": "Waiver-wire hero",
-      "note": "Highest-scoring starter that roster did not draft",
+      "title": "Ugly win",
+      "note": "Lowest score that still won its matchup",
       "auto": true
     },
     {
