@@ -23,8 +23,15 @@ from pathlib import Path
 
 # ---------------------------------------------------------------- config ----
 LEAGUE_ID = os.environ.get("LEAGUE_ID") or "1403192355279904768"
+# Full payout structure. Weekly prizes plus season prizes must equal the pot -
+# pot_check() below enforces that, so editing one number without balancing the
+# rest is caught rather than silently over-committing the money.
+BUY_IN = 25.00
+LEAGUE_SIZE = 12
+SEASON_WEEKS = 14
 HIGH_SCORE_PRIZE = 5.00
 CHALLENGE_PRIZE = 2.50
+SEASON_PRIZES = {1: 120.00, 2: 50.00, 3: 25.00}   # settled by hand after wk 14
 PAID_FILE = Path("paid_weeks.json")
 SITE_DATA = Path("docs/data")
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK") or None
@@ -252,6 +259,13 @@ def pay_lines(names, prize, note):
     return out
 
 
+def pot_check():
+    """(pot, committed) - the buy-in pool vs. everything the structure pays out."""
+    pot = BUY_IN * LEAGUE_SIZE
+    weekly = (HIGH_SCORE_PRIZE + CHALLENGE_PRIZE) * SEASON_WEEKS
+    return pot, weekly + sum(SEASON_PRIZES.values())
+
+
 def write_challenges():
     """Publish the full 14-week challenge schedule, independent of any results."""
     SITE_DATA.mkdir(parents=True, exist_ok=True)
@@ -382,6 +396,11 @@ def main():
                 "winners": names, "value": round(best, 2), "detail": fmt.format(best),
                 "leaderboard": [{"name": n, "value": round(v, 2), "detail": fmt.format(v)}
                                 for v, n in board]}
+
+    pot, committed = pot_check()
+    if abs(pot - committed) > 0.005:
+        lines += ["", f"WARNING: payouts total ${committed:.2f} against a "
+                      f"${pot:.2f} pot (off by ${committed - pot:+.2f})."]
 
     lines += ["", "Scores this week:"]
     for m in sorted(L.matchups, key=lambda m: m["points"], reverse=True):
