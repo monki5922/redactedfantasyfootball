@@ -455,15 +455,36 @@ function bracketFigure(b, L, cfg) {
   if (!b || !b.length) return null;
   const seeded = L.state.week >= cfg.start;
   const rounds = {}; b.forEach(m => (rounds[m.r] = rounds[m.r] || []).push(m));
+  const r1 = (rounds[1] || []).sort((a, z) => a.m - z.m);
+  const r2 = (rounds[2] || []).filter(m => !m.p).sort((a, z) => a.m - z.m);
 
   const named = (rid) => (seeded && rid) ? L.names[rid] : null;
+
+  // Fixed 6-team bracket: seeds 1 and 2 sit out round 1, the top seed meets the
+  // winner of 4v5 and the second seed the winner of 3v6. Confirmed against the
+  // league's own bracket, where the 12 seed drew the 9v8 winner.
+  const R1_SEEDS = [[4, 5], [3, 6]];
+  const seedAt = (m, k) => {
+    const i = r1.indexOf(m);
+    if (i > -1 && R1_SEEDS[i]) return R1_SEEDS[i][k === 't1' ? 0 : 1];
+    const j = r2.indexOf(m);
+    if (j > -1 && k === 't1') return j + 1;          // the bye seeds, 1 then 2
+    return null;
+  };
+  // in the toilet bowl the bracket's 1 seed is the league's worst finisher
+  const place = (n) => cfg.invertSeeds ? (cfg.totalTeams + 1 - n) : n;
+  const seedText = (m, k) => {
+    const n = seedAt(m, k);
+    return n ? `${place(n)} seed` : 'seed TBD';
+  };
+
   const slot = (m, k) => {
     const nm = named(m[k]);
     if (nm) return `<span>${esc(nm)}</span>`;
     const src = m[k + '_from'] || {};
     if (src.w) return `<span class="slot">${esc(cfg.advance)} of game ${src.w}</span>`;
     if (src.l) return `<span class="slot">${esc(cfg.drop)} of game ${src.l}</span>`;
-    return '<span class="slot">seed TBD</span>';
+    return `<span class="slot">${esc(seedText(m, k))}</span>`;
   };
   const team = (m, k) =>
     `<div class="team${seeded && m.w && m.w === m[k] ? ' win' : ''}">${slot(m, k)}</div>`;
@@ -471,15 +492,13 @@ function bracketFigure(b, L, cfg) {
     `<div class="m${cls ? ' ' + cls : ''}" data-id="m${m.m}">
        <div class="cap">${esc(cap)}</div>${team(m, 't1')}${team(m, 't2')}</div>`;
 
-  const r1 = (rounds[1] || []).sort((a, z) => a.m - z.m);
-  const r2 = (rounds[2] || []).filter(m => !m.p).sort((a, z) => a.m - z.m);
   const final = (rounds[3] || []).find(m => m.p === 1);
   const places = b.filter(m => m.p && m !== final).sort((a, z) => a.r - z.r || a.p - z.p);
 
   // a round-2 side with no _from is a bye: that seed sat out round 1
   const byeCard = (semi) => `<div class="m bye" data-id="bye${semi.m}">
       <div class="team">${named(semi.t1) ? `<span>${esc(named(semi.t1))}</span>`
-        : '<span class="slot">seed TBD</span>'}</div>
+        : `<span class="slot">${esc(seedText(semi, 't1'))}</span>`}</div>
       <div class="byelabel">Bye</div></div>`;
 
   const col1 = `<div class="col"><h3>Round 1<span>Week ${cfg.start}</span></h3>
@@ -539,10 +558,12 @@ function cardBracket(L) {
   const st = L.league.settings || {};
   const start = st.playoff_week_start || 15;
   const teams = st.playoff_teams || 6;
+  const total = L.league.total_rosters || (L.rosters || []).length || 12;
   const out = [];
   const champs = bracketFigure(L.bracket, L, {
     start, title: `Playoffs · top ${teams} · weeks ${start}–${start + 2}`,
     advance: 'winner', drop: 'loser', finalCls: 'gold',
+    invertSeeds: false, totalTeams: total,
     places: { 1: 'Championship', 3: '3rd place', 5: '5th place' },
     note: L.state.week >= start ? '' :
       `Seeds are set after week ${start - 1}. The top two seeds get a first-round bye.`,
@@ -552,6 +573,7 @@ function cardBracket(L) {
   const bowl = bracketFigure(L.losers, L, {
     start, title: 'Toilet bowl · a tournament for last place',
     advance: 'winner', drop: 'loser', finalCls: 'bowl',
+    invertSeeds: true, totalTeams: total,
     places: { 1: '💩 King (Last Place)', 3: '10th place', 5: '8th place' },
     note: L.state.week >= start ? '' :
       `The bottom six after week ${start - 1}, with the worst two seeds on a bye.`,
