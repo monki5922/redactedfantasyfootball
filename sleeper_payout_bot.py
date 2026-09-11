@@ -183,14 +183,17 @@ def flex_master(L):
         rows.append((sum(sp[i][1] for i in idx if i < len(sp)), L.name(m)))
     return rows, False, "FLEX {:.2f} pts"
 
-def season_high(L):
-    best = {}
-    for wk in range(1, L.week + 1):
-        for m in get(f"{API}/league/{LEAGUE_ID}/matchups/{wk}"):
-            n = L.names[m["roster_id"]]
-            if m["points"] > best.get(n, (0, 0))[0]:
-                best[n] = (m["points"], wk)
-    return [(v, f"{n} (wk {wk})") for n, (v, wk) in best.items()], False, "season high {:.2f}"
+def double_digit_club(L):
+    rows = [(sum(1 for _, p in L.starter_pts(m) if p >= 10), L.name(m))
+            for m in L.matchups]
+    return rows, False, "{:.0f} starters in double figures"
+
+def boom_or_bust(L):
+    rows = []
+    for m in L.matchups:
+        pts = [p for _, p in L.starter_pts(m)]
+        rows.append((max(pts) - min(pts) if pts else 0.0, L.name(m)))
+    return rows, False, "{:.2f} between best and worst starter"
 
 def manual(L):
     return [], False, ""
@@ -209,8 +212,8 @@ CHALLENGES = {
     10: ("Heartbreaker", heartbreaker),
     11: ("Top WR", top_pos("WR")),
     12: ("Flex master", flex_master),
-    13: ("Rivalry week (settle manually: most pts from players in divisional games)", manual),
-    14: ("Season-high", season_high),
+    13: ("Double-digit club", double_digit_club),
+    14: ("Boom or bust", boom_or_bust),
 }
 
 
@@ -229,8 +232,8 @@ CHALLENGE_NOTES = {
     10: "Closest losing margin - the prize goes to the loser",
     11: "Highest-scoring starting wide receiver",
     12: "Highest combined points from the two FLEX slots",
-    13: "Most points from players in divisional NFL games",
-    14: "Highest single-week score of the entire season",
+    13: "Most starters scoring 10 or more points",
+    14: "Biggest gap between your best and worst starter",
 }
 
 

@@ -75,14 +75,14 @@
     },
     {
       "week": 13,
-      "title": "Rivalry week",
-      "note": "Most points from players in divisional NFL games",
-      "auto": false
+      "title": "Double-digit club",
+      "note": "Most starters scoring 10 or more points",
+      "auto": true
     },
     {
       "week": 14,
-      "title": "Season-high",
-      "note": "Highest single-week score of the entire season",
+      "title": "Boom or bust",
+      "note": "Biggest gap between your best and worst starter",
       "auto": true
     }
   ]

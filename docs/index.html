@@ -25,7 +25,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
-header { margin-bottom: 28px; }
+header { margin-bottom: 28px; display: flex; align-items: flex-start;
+          justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+#refresh { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 15px;
+           border-radius: 999px; cursor: pointer; border: 1px solid var(--line);
+           background: var(--panel); color: var(--ink); white-space: nowrap; }
+#refresh:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+#refresh:disabled { opacity: 0.55; cursor: default; }
+.err { color: #c0392b; font-size: 13px; }
+@media (prefers-color-scheme: dark) { .err { color: #ff8a7a; } }
+.money { font-variant-numeric: tabular-nums; font-weight: 650; }
+.total td { border-top: 2px solid var(--line); font-weight: 700; }
 h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
 .sub { color: var(--muted); font-size: 13px; }
 .card {
@@ -109,193 +119,329 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 3
 <body>
 <div class="wrap">
   <header>
-    <h1>League Payouts</h1>
-    <div class="sub" id="sub">Loading…</div>
+    <div>
+      <h1>League Payouts</h1>
+      <div class="sub" id="sub">Loading…</div>
+    </div>
+    <button id="refresh" disabled>Refresh</button>
   </header>
   <div id="app"></div>
   <footer>Updated automatically every Tuesday morning from Sleeper's final numbers.</footer>
 </div>
 
 <script>
+/* Everything on this page is computed in the browser from Sleeper's public API.
+   A week is settled once its Tuesday 6am PT lock has passed and scores exist -
+   the same moment the old cron job used to run. */
+const LEAGUE_ID = '1403192355279904768';
+const API = 'https://api.sleeper.app/v1';
+const HIGH_SCORE_PRIZE = 5.00, CHALLENGE_PRIZE = 2.50, SEASON_WEEKS = 14;
+const POS_KEY = 'ffp.positions.v1', SNAP_KEY = 'ffp.snapshot.v1';
+
 const $ = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstChild; };
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const money = (n) => '$' + n.toFixed(2).replace(/\.00$/, '');
+const money = (n) => '$' + n.toFixed(2).replace(/\.00$/, '');   // labels: $5, $2.50
+const usd = (n) => '$' + n.toFixed(2);                          // columns: always 2dp
+const n2 = (v) => v.toFixed(2);
 const app = document.getElementById('app');
 const sub = document.getElementById('sub');
+const btn = document.getElementById('refresh');
 
-function empty(msg) {
-  sub.textContent = '';
-  app.innerHTML = '';
-  app.append($(`<div class="card"><div class="empty"><strong>No results yet</strong>${esc(msg)}</div></div>`));
+const j = (u) => fetch(u, { cache: 'no-store' })
+  .then(r => { if (!r.ok) throw new Error(`${u} -> ${r.status}`); return r.json(); });
+
+/* ---- when does week w lock? first Tuesday after kickoff, then weekly ---- */
+function weekLock(seasonStart, w) {
+  const d = new Date(seasonStart + 'T00:00:00Z');
+  do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getUTCDay() !== 2);
+  d.setUTCDate(d.getUTCDate() + 7 * (w - 1));
+  d.setUTCHours(13, 0, 0, 0);              // 6am PT
+  return d;
 }
 
-function prize(kind, label, block) {
-  if (!block) return '';
-  if (block.manual || !block.winners || !block.winners.length) {
-    return `<div class="prize ${kind}"><div class="label">${esc(label)}</div>
-            <div class="who">Settled manually</div>
-            <div class="detail">${esc(block.title || '')}</div></div>`;
+/* ---- positions: /players/nfl is ~14MB, so keep only pid -> position ---- */
+async function loadPositions() {
+  try {
+    const c = JSON.parse(localStorage.getItem(POS_KEY));
+    if (c && c.map && Date.now() - c.at < 7 * 864e5) return c.map;
+  } catch {}
+  const all = await j(`${API}/players/nfl`);
+  const map = {};
+  for (const pid in all) { const p = all[pid] && all[pid].position; if (p) map[pid] = p; }
+  try { localStorage.setItem(POS_KEY, JSON.stringify({ at: Date.now(), map })); } catch {}
+  return map;
+}
+
+/* ------------------------------- league -------------------------------- */
+async function loadLeague() {
+  const [state, league, users, rosters] = await Promise.all([
+    j(`${API}/state/nfl`), j(`${API}/league/${LEAGUE_ID}`),
+    j(`${API}/league/${LEAGUE_ID}/users`), j(`${API}/league/${LEAGUE_ID}/rosters`)]);
+
+  const uname = {}; users.forEach(u => uname[u.user_id] = u.display_name);
+  const names = {}; rosters.forEach(r => names[r.roster_id] = uname[r.owner_id] || 'unknown');
+  const slots = league.roster_positions.filter(p => p !== 'BN');
+
+  const upto = Math.min(SEASON_WEEKS, Math.max(state.week, 1));
+  const mws = await Promise.all(Array.from({ length: upto }, (_, i) =>
+    j(`${API}/league/${LEAGUE_ID}/matchups/${i + 1}`).catch(() => [])));
+  const weeks = {}; mws.forEach((m, i) => weeks[i + 1] = m || []);
+
+  let drafted = {};
+  try {
+    const drafts = await j(`${API}/league/${LEAGUE_ID}/drafts`);
+    if (drafts && drafts.length) {
+      for (const pick of await j(`${API}/draft/${drafts[0].draft_id}/picks`)) {
+        (drafted[pick.roster_id] = drafted[pick.roster_id] || new Set()).add(pick.player_id);
+      }
+    }
+  } catch {}
+
+  const [pos, bracket] = await Promise.all([
+    loadPositions(),
+    j(`${API}/league/${LEAGUE_ID}/winners_bracket`).catch(() => [])]);
+
+  return { state, league, names, slots, weeks, pos, drafted, bracket };
+}
+
+/* ----------------------------- challenges ------------------------------ */
+const starterPts = (m) => (m.starters || []).map(pid => [pid, (m.players_points || {})[pid] ?? 0]);
+const benchPts = (m) => { const s = new Set(m.starters || []);
+  return Object.entries(m.players_points || {}).filter(([pid]) => !s.has(pid)); };
+
+function pairs(ms) {
+  const by = {}; ms.forEach(m => (by[m.matchup_id] = by[m.matchup_id] || []).push(m));
+  return Object.values(by).filter(p => p.length === 2)
+    .map(p => { const [a, b] = [...p].sort((x, y) => y.points - x.points); return [a, b, a.points - b.points]; });
+}
+
+const FLEX_ELIG = { FLEX: ['RB','WR','TE'], SUPER_FLEX: ['QB','RB','WR','TE'],
+                    REC_FLEX: ['WR','TE'], WRRB_FLEX: ['RB','WR'], IDP_FLEX: [] };
+
+function optimal(m, slots, pos) {
+  const pool = { ...(m.players_points || {}) };
+  let total = 0; const flex = [];
+  const take = (ok) => {
+    let best = null;
+    for (const pid in pool) if (ok(pos[pid] || '?') && (best === null || pool[pid] > pool[best])) best = pid;
+    if (best !== null) { total += pool[best]; delete pool[best]; }
+  };
+  for (const s of slots) { if (FLEX_ELIG[s]) { flex.push(s); continue; } take(p => p === s); }
+  for (const s of flex) { const el = FLEX_ELIG[s]; take(p => el.includes(p)); }
+  return total;
+}
+
+const topPos = (position) => (L, ms) => ms.map(m => ({
+  name: L.names[m.roster_id],
+  value: Math.max(0, ...starterPts(m).filter(([pid]) => L.pos[pid] === position).map(([, p]) => p)) }));
+
+const CHALLENGES = [
+  { week: 1,  title: 'Highest score', note: `Most total points - same as the high-score prize, so that winner takes ${money(HIGH_SCORE_PRIZE + CHALLENGE_PRIZE)}`,
+    fmt: v => `${n2(v)} pts`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id], value: m.points })) },
+  { week: 2,  title: 'Best bench', note: 'Highest combined bench points',
+    fmt: v => `${n2(v)} bench pts`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id], value: benchPts(m).reduce((a, [, p]) => a + p, 0) })) },
+  { week: 3,  title: 'Closest to 100', note: 'Total nearest to 100.00, over or under', low: true,
+    fmt: v => `${n2(v)} from 100`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id], value: Math.abs(m.points - 100) })) },
+  { week: 4,  title: 'Biggest blowout', note: 'Largest margin of victory',
+    fmt: v => `won by ${n2(v)}`, rows: (L, ms) => pairs(ms).map(([w, , mg]) => ({ name: L.names[w.roster_id], value: mg })) },
+  { week: 5,  title: 'Top QB', note: 'Highest-scoring starting quarterback', fmt: v => `QB ${n2(v)} pts`, rows: topPos('QB') },
+  { week: 6,  title: 'Kicker & defense combo', note: 'Highest combined kicker + defense points',
+    fmt: v => `K+DEF ${n2(v)} pts`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id],
+      value: starterPts(m).filter(([pid]) => ['K','DEF'].includes(L.pos[pid])).reduce((a, [, p]) => a + p, 0) })) },
+  { week: 7,  title: 'Waiver-wire hero', note: 'Highest-scoring starter that roster did not draft',
+    fmt: v => `undrafted starter ${n2(v)} pts`, rows: (L, ms) => ms.map(m => {
+      const own = L.drafted[m.roster_id] || new Set();
+      return { name: L.names[m.roster_id], value: Math.max(0, ...starterPts(m).filter(([pid]) => !own.has(pid)).map(([, p]) => p)) }; }) },
+  { week: 8,  title: 'Perfect lineup', note: 'Fewest points left on the bench vs. the optimal lineup', low: true,
+    fmt: v => `left ${n2(v)} on bench`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id], value: optimal(m, L.slots, L.pos) - m.points })) },
+  { week: 9,  title: 'Top RB', note: 'Highest-scoring starting running back', fmt: v => `RB ${n2(v)} pts`, rows: topPos('RB') },
+  { week: 10, title: 'Heartbreaker', note: 'Closest losing margin - the prize goes to the loser', low: true,
+    fmt: v => `lost by ${n2(v)}`, rows: (L, ms) => pairs(ms).filter(([, , mg]) => mg > 0).map(([, l, mg]) => ({ name: L.names[l.roster_id], value: mg })) },
+  { week: 11, title: 'Top WR', note: 'Highest-scoring starting wide receiver', fmt: v => `WR ${n2(v)} pts`, rows: topPos('WR') },
+  { week: 12, title: 'Flex master', note: 'Highest combined points from the two FLEX slots',
+    fmt: v => `FLEX ${n2(v)} pts`, rows: (L, ms) => { const idx = L.slots.map((s, i) => s === 'FLEX' ? i : -1).filter(i => i >= 0);
+      return ms.map(m => { const sp = starterPts(m); return { name: L.names[m.roster_id], value: idx.reduce((a, i) => a + (sp[i] ? sp[i][1] : 0), 0) }; }); } },
+  { week: 13, title: 'Double-digit club', note: 'Most starters scoring 10 or more points',
+    fmt: v => `${v.toFixed(0)} starters in double figures`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id], value: starterPts(m).filter(([, p]) => p >= 10).length })) },
+  { week: 14, title: 'Boom or bust', note: 'Biggest gap between your best and worst starter',
+    fmt: v => `${n2(v)} between best and worst`, rows: (L, ms) => ms.map(m => { const p = starterPts(m).map(([, v]) => v);
+      return { name: L.names[m.roster_id], value: p.length ? Math.max(...p) - Math.min(...p) : 0 }; }) },
+];
+
+function winners(rows, low) {
+  if (!rows || !rows.length) return { best: null, names: [] };
+  const vals = rows.map(r => r.value);
+  const best = low ? Math.min(...vals) : Math.max(...vals);
+  return { best, names: rows.filter(r => r.value === best).map(r => r.name) };
+}
+
+/* --------------------------- settle the season -------------------------- */
+function settle(L) {
+  const start = L.state.season_start_date;
+  const now = Date.now();
+  const out = [];
+  for (const c of CHALLENGES) {
+    const ms = L.weeks[c.week] || [];
+    const lock = weekLock(start, c.week);
+    const scored = ms.some(m => m.points > 0);
+    const done = now >= lock.getTime() && scored;
+    let hs = { names: [] }, ch = { names: [] }, board = [];
+    if (done) {
+      hs = winners(ms.map(m => ({ name: L.names[m.roster_id], value: m.points })), false);
+      board = (c.rows(L, ms) || []).sort((a, b) => c.low ? a.value - b.value : b.value - a.value);
+      ch = winners(board, c.low);
+    }
+    out.push({ ...c, lock, done, scored, matchups: ms, high: hs, chal: ch, board });
   }
-  const share = block.prize / block.winners.length;
-  const tie = block.winners.length > 1 ? ` · ${block.winners.length}-way tie, ${money(share)} each` : '';
-  return `<div class="prize ${kind}">
-            <div class="label">${esc(label)} · ${money(block.prize)}</div>
-            <div class="who">${esc(block.winners.join(', '))}</div>
-            <div class="detail">${esc(block.detail || '')}${tie}</div>
-          </div>`;
+  return out;
 }
 
-function renderWeek(w) {
-  const ch = w.challenge;
-  const winners = new Set([...(w.high_score?.winners || []), ...(ch?.winners || [])].map(n => n.split(' (wk')[0]));
-
-  const cards = [$(`<div class="card">
-      <h2>Week ${w.week}</h2>
-      <div class="prizes">
-        ${prize('hs', 'High score', w.high_score)}
-        ${prize('ch', ch ? ch.title : 'Challenge', ch)}
-      </div></div>`)];
-
-  if (ch && ch.leaderboard && ch.leaderboard.length) {
-    cards.push($(`<div class="card"><h2>${esc(ch.title)} — full board</h2>
-      <table><thead><tr><th class="rank">#</th><th>Manager</th><th class="n">Result</th></tr></thead>
-      <tbody>${ch.leaderboard.map((r, i) =>
-        `<tr class="${i === 0 ? 'win' : ''}"><td class="rank">${i + 1}</td><td>${esc(r.name)}</td>
-         <td class="n">${esc(r.detail)}</td></tr>`).join('')}</tbody></table></div>`));
+function winningsTable(L, season) {
+  const t = {};
+  const row = (n) => (t[n] = t[n] || { name: n, high: 0, chal: 0, total: 0, best: 0 });
+  Object.values(L.names).forEach(row);
+  for (const w of season) {
+    if (!w.done) continue;
+    for (const m of w.matchups) { const r = row(L.names[m.roster_id]); r.best = Math.max(r.best, m.points); }
+    const add = (list, prize, key) => {
+      if (!list.length) return;
+      const share = prize / list.length;
+      list.forEach(n => { const r = row(n); r[key] += 1; r.total += share; });
+    };
+    add(w.high.names, HIGH_SCORE_PRIZE, 'high');
+    add(w.chal.names, CHALLENGE_PRIZE, 'chal');
   }
-
-  cards.push($(`<div class="card"><h2>Scores</h2>
-    <table><thead><tr><th class="rank">#</th><th>Manager</th><th class="n">Points</th></tr></thead>
-    <tbody>${w.scores.map((s, i) =>
-      `<tr class="${winners.has(s.name) ? 'win' : ''}"><td class="rank">${i + 1}</td>
-       <td>${esc(s.name)}</td><td class="n">${s.points.toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`));
-
-  return cards;
+  return Object.values(t).sort((a, b) => b.total - a.total || b.best - a.best || a.name.localeCompare(b.name));
 }
 
-function renderSeason(season) {
-  if (!season || !season.length) return null;
-  return $(`<div class="card"><h2>Season standings</h2>
-    <table><thead><tr><th class="rank">#</th><th>Manager</th><th class="n">High</th>
-      <th class="n">Chal.</th><th class="n">Best week</th><th class="n">Won</th></tr></thead>
-    <tbody>${season.map((r, i) =>
-      `<tr><td class="rank">${i + 1}</td><td>${esc(r.name)}</td>
-       <td class="n">${r.high_score_wins}</td><td class="n">${r.challenge_wins}</td>
-       <td class="n">${r.best_score.toFixed(2)}</td>
-       <td class="n">${r.winnings ? money(r.winnings) : '—'}</td></tr>`).join('')}</tbody></table></div>`);
-}
-
-function renderChallenges(data, index, hsPrize) {
-  const challenges = data && data.weeks;
-  if (!challenges || !challenges.length) return null;
-  const done = new Set(index ? index.weeks : []);
-  const results = (index && index.results) || {};
-  const next = challenges.find(c => !done.has(c.week));
-
-  const won = (list) => list && list.length
-    ? `<span class="won">${esc(list.join(', '))}</span>`
-    : '<span class="pending">—</span>';
-
-  const rows = challenges.map(c => {
-    const isDone = done.has(c.week);
-    const isNow = next && c.week === next.week;
-    const r = results[String(c.week)] || {};
-    const chip = isNow ? '<span class="chip up">up next</span>'
-               : (!c.auto && !isDone) ? '<span class="chip man">by hand</span>' : '';
-    return `<tr class="${isDone ? 'done' : ''}${isNow ? ' now' : ''}">
-              <td class="wk">Wk ${c.week}</td>
-              <td>${won(r.high_score)}</td>
-              <td><span class="title">${esc(c.title)}</span>${chip}
-                  <div class="note">${esc(c.note)}</div>
-                  <div style="margin-top:4px">${won(r.challenge)}</div></td>
-            </tr>`;
-  }).join('');
-
+/* ------------------------------- render -------------------------------- */
+function cardWeekTable(season) {
+  const next = season.find(w => !w.done);
+  const cell = (list) => list && list.length
+    ? `<span class="won">${esc(list.join(', '))}</span>` : '<span class="pending">—</span>';
+  const rows = season.map(w => `
+    <tr class="${w.done ? 'done' : ''}${next && w.week === next.week ? ' now' : ''}">
+      <td class="wk">Wk ${w.week}</td>
+      <td>${cell(w.high.names)}</td>
+      <td><span class="title">${esc(w.title)}</span>${next && w.week === next.week ? '<span class="chip up">up next</span>' : ''}
+          <div class="note">${esc(w.note)}</div>
+          <div style="margin-top:4px">${cell(w.chal.names)}${w.done && w.chal.best !== null && w.chal.names.length
+            ? ` <span class="pending">· ${esc(w.fmt(w.chal.best))}</span>` : ''}</div></td>
+    </tr>`).join('');
   return $(`<div class="card"><h2>How to win money each week</h2>
     <div class="scroll"><table class="sched">
-      <thead><tr><th class="wk">Week</th>
-        <th>High score · ${money(hsPrize)}</th>
-        <th>Weekly challenge · ${money(data.prize)}</th></tr></thead>
+      <thead><tr><th class="wk">Week</th><th>High score · ${money(HIGH_SCORE_PRIZE)}</th>
+        <th>Weekly challenge · ${money(CHALLENGE_PRIZE)}</th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>`);
 }
 
-function renderPlayoffs(p) {
-  if (!p || !p.rounds || !p.rounds.length) return null;
+function cardLatest(L, season) {
+  const done = season.filter(w => w.done);
+  if (!done.length) return null;
+  const w = done[done.length - 1];
+  const prize = (kind, label, res, detail) => {
+    const pot = kind === 'hs' ? HIGH_SCORE_PRIZE : CHALLENGE_PRIZE;
+    const share = res.names.length > 1
+      ? ` · ${res.names.length}-way tie, ${money(pot / res.names.length)} each` : '';
+    return `<div class="prize ${kind}"><div class="label">${esc(label)} · ${money(pot)}</div>
+      <div class="who">${res.names.length ? esc(res.names.join(', ')) : 'No winner'}</div>
+      <div class="detail">${res.names.length ? esc(detail) + share : 'nobody qualified this week'}</div></div>`;
+  };
+  const scores = [...w.matchups].sort((a, b) => b.points - a.points);
+  const winSet = new Set([...w.high.names, ...w.chal.names]);
+  return $(`<div class="card"><h2>Week ${w.week} — latest result</h2>
+    <div class="prizes">
+      ${prize('hs', 'High score', w.high, w.high.best === null ? '' : `${n2(w.high.best)} pts`)}
+      ${prize('ch', w.title, w.chal, w.chal.best === null ? '' : w.fmt(w.chal.best))}
+    </div>
+    <div class="scroll" style="margin-top:18px"><table>
+      <thead><tr><th class="rank">#</th><th>Manager</th><th class="n">Points</th></tr></thead>
+      <tbody>${scores.map((m, i) => `<tr class="${winSet.has(L.names[m.roster_id]) ? 'win' : ''}">
+        <td class="rank">${i + 1}</td><td>${esc(L.names[m.roster_id])}</td>
+        <td class="n">${n2(m.points)}</td></tr>`).join('')}</tbody></table></div></div>`);
+}
 
-  const slot = (t) => {
-    if (t.name) return `<span>${esc(t.name)}</span>`;
-    if (t.from) return `<span class="slot">${t.from} of game ${t.from_match}</span>`;
+function cardBracket(L) {
+  const b = L.bracket;
+  if (!b || !b.length) return null;
+  const start = L.league.settings.playoff_week_start || 15;
+  const seeded = L.state.week >= start;
+  const ROUND = { 1: 'Wild card', 2: 'Semifinals', 3: 'Championship' };
+  const PLACE = { 1: 'Championship', 3: '3rd place', 5: '5th place' };
+  const rounds = {};
+  [...b].sort((x, y) => x.r - y.r || x.m - y.m).forEach(m => {
+    (rounds[m.r] = rounds[m.r] || []).push(m); });
+
+  const slot = (m, k) => {
+    const src = m[k + '_from'] || {};
+    const nm = seeded && m[k] ? L.names[m[k]] : null;
+    if (nm) return `<span>${esc(nm)}</span>`;
+    if (src.w) return `<span class="slot">winner of game ${src.w}</span>`;
+    if (src.l) return `<span class="slot">loser of game ${src.l}</span>`;
     return '<span class="slot">seed TBD</span>';
   };
-  const team = (t, w) =>
-    `<div class="team${w && t.name && t.name === w ? ' win' : ''}">${slot(t)}</div>`;
-
-  const cols = p.rounds.map(r => `
-    <div class="round">
-      <h3>${esc(r.name)}<span>Week ${r.week}</span></h3>
-      <div class="games">${r.matchups.map(m => `
-        <div class="match${m.label === 'Championship' ? ' title-game' : ''}">
-          <div class="cap">${esc(m.label || 'Game ' + m.m)}</div>
-          ${team(m.t1, m.winner)}${team(m.t2, m.winner)}
-        </div>`).join('')}</div>
-    </div>`).join('');
-
-  const note = p.seeded ? '' :
-    `<div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">
-       Seeds are set after week ${p.playoff_week_start - 1}; the top two seeds get a
-       first-round bye.</div>`;
-
-  const last = p.playoff_week_start + p.rounds.length - 1;
-  return $(`<div class="card"><h2>Playoffs · top ${p.playoff_teams} · weeks ${p.playoff_week_start}–${last}</h2>
-    <div class="scroll"><div class="bracket">${cols}</div></div>${note}</div>`);
+  const cols = Object.keys(rounds).map(Number).sort((a, b2) => a - b2).map(r => `
+    <div class="round"><h3>${ROUND[r] || 'Round ' + r}<span>Week ${start + r - 1}</span></h3>
+      <div class="games">${rounds[r].map(m => `
+        <div class="match${m.p === 1 ? ' title-game' : ''}">
+          <div class="cap">${esc(PLACE[m.p] || 'Game ' + m.m)}</div>
+          <div class="team${seeded && m.w && m.w === m.t1 ? ' win' : ''}">${slot(m, 't1')}</div>
+          <div class="team${seeded && m.w && m.w === m.t2 ? ' win' : ''}">${slot(m, 't2')}</div>
+        </div>`).join('')}</div></div>`).join('');
+  const nRounds = Object.keys(rounds).length;
+  return $(`<div class="card"><h2>Playoffs · top ${L.league.settings.playoff_teams || 6} · weeks ${start}–${start + nRounds - 1}</h2>
+    <div class="scroll"><div class="bracket">${cols}</div></div>
+    ${seeded ? '' : `<div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">Seeds are set after week ${start - 1}; the top two seeds get a first-round bye.</div>`}</div>`);
 }
 
-async function show(week, index) {
-  const w = await fetch(`data/weeks/${week}.json`).then(r => r.json());
+function cardWinnings(rows) {
+  const pot = rows.reduce((a, r) => a + r.total, 0);
+  return $(`<div class="card"><h2>Total winnings</h2>
+    <div class="scroll"><table>
+      <thead><tr><th class="rank">#</th><th>Manager</th><th class="n">High score</th>
+        <th class="n">Challenges</th><th class="n">Best week</th><th class="n">Won</th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr><td class="rank">${i + 1}</td><td>${esc(r.name)}</td>
+        <td class="n">${r.high}</td><td class="n">${r.chal}</td>
+        <td class="n">${r.best ? n2(r.best) : '—'}</td>
+        <td class="n money">${r.total ? usd(r.total) : '—'}</td></tr>`).join('')}
+        <tr class="total"><td></td><td>Paid out so far</td><td class="n"></td><td class="n"></td>
+          <td class="n"></td><td class="n money">${usd(pot)}</td></tr></tbody></table></div>
+    <div class="note" style="margin-top:12px;color:var(--muted);font-size:13px">
+      Season prizes (1st ${money(120)}, 2nd ${money(50)}, 3rd ${money(25)}) are settled after the playoffs and are not counted here.</div></div>`);
+}
+
+/* ----------------------------- bootstrap -------------------------------- */
+function paint(L) {
+  const season = settle(L);
   app.innerHTML = '';
-  if (index.weeks.length > 1) {
-    const nav = $(`<nav>${index.weeks.slice().reverse().map(n =>
-      `<button data-w="${n}" aria-current="${n === week}">Week ${n}</button>`).join('')}</nav>`);
-    nav.addEventListener('click', e => {
-      const b = e.target.closest('button[data-w]');
-      if (b) show(Number(b.dataset.w), index);
-    });
-    app.append(nav);
-  }
-  renderWeek(w).forEach(c => app.append(c));
-  const s = renderSeason(index.season);
-  if (s) app.append(s);
-  const sc = renderChallenges(CHALLENGES, index, w.high_score ? w.high_score.prize : 5);
-  if (sc) app.append(sc);
-  const pl = renderPlayoffs(PLAYOFFS);
-  if (pl) app.append(pl);
+  const latest = cardLatest(L, season);
+  if (latest) app.append(latest); else app.append($(`<div class="card"><div class="empty">
+    <strong>No results yet</strong>The first week settles the Tuesday after it wraps up.</div></div>`));
+  app.append(cardWeekTable(season));
+  const br = cardBracket(L); if (br) app.append(br);
+  app.append(cardWinnings(winningsTable(L, season)));
+
+  const next = season.find(w => !w.done);
+  sub.textContent = 'Live from Sleeper · checked ' +
+    new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) +
+    (next ? ` · week ${next.week} settles ${next.lock.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '');
+  try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now() })); } catch {}
 }
 
-let CHALLENGES = null, PLAYOFFS = null;
+async function run() {
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    paint(await loadLeague());
+  } catch (e) {
+    app.innerHTML = '';
+    app.append($(`<div class="card"><div class="empty"><strong>Couldn't reach Sleeper</strong>
+      <span class="err">${esc(e.message)}</span></div></div>`));
+    sub.textContent = '';
+  } finally { btn.disabled = false; btn.textContent = 'Refresh'; }
+}
 
-const loadJSON = (u) => fetch(u, { cache: 'no-store' })
-  .then(r => r.ok ? r.json() : null).catch(() => null);
-
-(async () => {
-  let index;
-  [index, CHALLENGES, PLAYOFFS] = await Promise.all([
-    loadJSON('data/index.json'), loadJSON('data/challenges.json'),
-    loadJSON('data/playoffs.json')]);
-
-  if (!index || !index.weeks || !index.weeks.length) {
-    empty('The first results post the Tuesday after week 1 wraps up.');
-    const sc = renderChallenges(CHALLENGES, null, 5);
-    if (sc) app.append(sc);
-    const pl = renderPlayoffs(PLAYOFFS);
-    if (pl) app.append(pl);
-    return;
-  }
-  const d = new Date(index.updated);
-  sub.textContent = isNaN(d) ? '' : 'Last updated ' +
-    d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) + ' at ' +
-    d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  show(index.latest_week, index);
-})();
+btn.addEventListener('click', run);
+run();
 </script>
 </body>
 </html>
