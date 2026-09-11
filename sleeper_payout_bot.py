@@ -282,6 +282,54 @@ def write_challenges():
     }, indent=2) + "\n")
 
 
+ROUND_NAMES = {1: "Wild card", 2: "Semifinals", 3: "Championship"}
+PLACE_NAMES = {1: "Championship", 3: "3rd place", 5: "5th place"}
+
+
+def write_playoffs():
+    """Publish the playoff bracket for weeks 15-17.
+
+    Sleeper returns the bracket shape all season but the roster ids in it are
+    placeholders until seeding happens after week 14, so names stay null until
+    then and the site shows empty slots.
+    """
+    lg = get(f"{API}/league/{LEAGUE_ID}")
+    start = lg["settings"].get("playoff_week_start", 15)
+    seeded = get(f"{API}/state/nfl")["week"] >= start
+
+    names = {}
+    if seeded:
+        users = {u["user_id"]: u["display_name"]
+                 for u in get(f"{API}/league/{LEAGUE_ID}/users")}
+        names = {r["roster_id"]: users.get(r["owner_id"], "unknown")
+                 for r in get(f"{API}/league/{LEAGUE_ID}/rosters")}
+
+    def slot(m, key):
+        src = m.get(f"{key}_from") or {}
+        return {"name": names.get(m.get(key)),
+                "from": ("winner" if "w" in src else "loser" if "l" in src else None),
+                "from_match": src.get("w") or src.get("l")}
+
+    rounds = {}
+    for m in sorted(get(f"{API}/league/{LEAGUE_ID}/winners_bracket"),
+                    key=lambda x: (x["r"], x["m"])):
+        r = rounds.setdefault(m["r"], {"round": m["r"], "week": start + m["r"] - 1,
+                                       "name": ROUND_NAMES.get(m["r"], f"Round {m['r']}"),
+                                       "matchups": []})
+        r["matchups"].append({"m": m["m"],
+                              "label": PLACE_NAMES.get(m.get("p")),
+                              "t1": slot(m, "t1"), "t2": slot(m, "t2"),
+                              "winner": names.get(m.get("w"))})
+
+    SITE_DATA.mkdir(parents=True, exist_ok=True)
+    (SITE_DATA / "playoffs.json").write_text(json.dumps({
+        "playoff_week_start": start,
+        "playoff_teams": lg["settings"].get("playoff_teams"),
+        "seeded": seeded,
+        "rounds": [rounds[r] for r in sorted(rounds)],
+    }, indent=2) + "\n")
+
+
 def write_site_data(result):
     """Write the public GitHub Pages payload.
 
@@ -290,6 +338,7 @@ def write_site_data(result):
     published site is world-readable.
     """
     write_challenges()
+    write_playoffs()
     weeks_dir = SITE_DATA / "weeks"
     weeks_dir.mkdir(parents=True, exist_ok=True)
     (weeks_dir / f"{result['week']}.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -324,8 +373,10 @@ def write_site_data(result):
         "updated": result["generated_at"],
         "latest_week": result["week"],
         "weeks": [w["week"] for w in weeks],
-        "results": {str(w["week"]): (w.get("challenge") or {}).get("winners", [])
-                    for w in weeks},
+        "results": {str(w["week"]): {
+            "high_score": (w.get("high_score") or {}).get("winners", []),
+            "challenge": (w.get("challenge") or {}).get("winners", []),
+        } for w in weeks},
         "season": sorted(tally.values(),
                          key=lambda r: (-r["winnings"], -r["best_score"], r["name"])),
     }, indent=2) + "\n")

@@ -1,0 +1,133 @@
+{
+  "playoff_week_start": 15,
+  "playoff_teams": 6,
+  "seeded": false,
+  "rounds": [
+    {
+      "round": 1,
+      "week": 15,
+      "name": "Wild card",
+      "matchups": [
+        {
+          "m": 1,
+          "label": null,
+          "t1": {
+            "name": null,
+            "from": null,
+            "from_match": null
+          },
+          "t2": {
+            "name": null,
+            "from": null,
+            "from_match": null
+          },
+          "winner": null
+        },
+        {
+          "m": 2,
+          "label": null,
+          "t1": {
+            "name": null,
+            "from": null,
+            "from_match": null
+          },
+          "t2": {
+            "name": null,
+            "from": null,
+            "from_match": null
+          },
+          "winner": null
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "week": 16,
+      "name": "Semifinals",
+      "matchups": [
+        {
+          "m": 3,
+          "label": null,
+          "t1": {
+            "name": null,
+            "from": null,
+            "from_match": null
+          },
+          "t2": {
+            "name": null,
+            "from": "winner",
+            "from_match": 1
+          },
+          "winner": null
+        },
+        {
+          "m": 4,
+          "label": null,
+          "t1": {
+            "name": null,
+            "from": null,
+            "from_match": null
+          },
+          "t2": {
+            "name": null,
+            "from": "winner",
+            "from_match": 2
+          },
+          "winner": null
+        },
+        {
+          "m": 5,
+          "label": "5th place",
+          "t1": {
+            "name": null,
+            "from": "loser",
+            "from_match": 1
+          },
+          "t2": {
+            "name": null,
+            "from": "loser",
+            "from_match": 2
+          },
+          "winner": null
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "week": 17,
+      "name": "Championship",
+      "matchups": [
+        {
+          "m": 6,
+          "label": "Championship",
+          "t1": {
+            "name": null,
+            "from": "winner",
+            "from_match": 3
+          },
+          "t2": {
+            "name": null,
+            "from": "winner",
+            "from_match": 4
+          },
+          "winner": null
+        },
+        {
+          "m": 7,
+          "label": "3rd place",
+          "t1": {
+            "name": null,
+            "from": "loser",
+            "from_match": 3
+          },
+          "t2": {
+            "name": null,
+            "from": "loser",
+            "from_match": 4
+          },
+          "winner": null
+        }
+      ]
+    }
+  ]
+}

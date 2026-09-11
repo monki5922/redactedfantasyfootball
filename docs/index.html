@@ -70,19 +70,40 @@ nav button[aria-current="true"] {
 .empty { color: var(--muted); text-align: center; padding: 40px 20px; }
 .empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 6px; }
 footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 32px; }
-.sched td { vertical-align: top; }
-.sched .wk { color: var(--muted); width: 46px; white-space: nowrap; }
+.scroll { overflow-x: auto; }
+.sched { min-width: 520px; }
+.sched td, .sched th { vertical-align: top; }
+.sched .wk { color: var(--muted); width: 52px; white-space: nowrap; font-weight: 600; }
 .sched .title { font-weight: 600; }
-.sched .note { color: var(--muted); font-size: 13px; margin-top: 2px; }
-.sched tr.done .title { color: var(--muted); font-weight: 500; }
+.sched .note { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.sched tr.done { color: var(--muted); }
 .sched tr.now { background: var(--accent-soft); }
-.sched tr.now .wk { color: var(--accent); font-weight: 700; }
+.sched tr.now .wk { color: var(--accent); }
+.pending { color: var(--muted); }
+.bracket { display: flex; gap: 26px; min-width: 620px; }
+.round { display: flex; flex-direction: column; flex: 1; min-width: 178px; }
+.round > h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+              color: var(--ink); margin: 0 0 12px; font-weight: 600; }
+.round > h3 span { color: var(--muted); margin-left: 6px; font-weight: 500; }
+.games { flex: 1; display: flex; flex-direction: column;
+         justify-content: center; gap: 16px; }
+.match { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.match .cap { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+              color: var(--muted); padding: 5px 11px; background: var(--bg);
+              border-bottom: 1px solid var(--line); font-weight: 600; }
+.match.title-game { border-color: var(--gold); }
+.match.title-game .cap { color: var(--gold); background: var(--gold-soft); }
+.team { display: flex; justify-content: space-between; align-items: center;
+        gap: 8px; padding: 10px 11px; font-size: 13.5px; }
+.team + .team { border-top: 1px solid var(--line); }
+.team .slot { color: var(--muted); font-style: italic; font-size: 12.5px; }
+.team.win { background: var(--accent-soft); font-weight: 650; }
 .chip { font-size: 10px; font-weight: 600; text-transform: uppercase;
         letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px;
         margin-left: 8px; white-space: nowrap; }
 .chip.up { color: var(--accent); background: var(--accent-soft); }
 .chip.man { color: var(--gold); background: var(--gold-soft); }
-.won { font-size: 13px; color: var(--accent); font-weight: 600; margin-top: 3px; }
+.won { color: var(--accent); font-weight: 650; }
 </style>
 </head>
 <body>
@@ -164,31 +185,69 @@ function renderSeason(season) {
        <td class="n">${r.winnings ? money(r.winnings) : '—'}</td></tr>`).join('')}</tbody></table></div>`);
 }
 
-function renderChallenges(data, index) {
+function renderChallenges(data, index, hsPrize) {
   const challenges = data && data.weeks;
   if (!challenges || !challenges.length) return null;
   const done = new Set(index ? index.weeks : []);
   const results = (index && index.results) || {};
   const next = challenges.find(c => !done.has(c.week));
 
+  const won = (list) => list && list.length
+    ? `<span class="won">${esc(list.join(', '))}</span>`
+    : '<span class="pending">—</span>';
+
   const rows = challenges.map(c => {
     const isDone = done.has(c.week);
     const isNow = next && c.week === next.week;
-    const winners = results[String(c.week)] || [];
+    const r = results[String(c.week)] || {};
     const chip = isNow ? '<span class="chip up">up next</span>'
-               : (!c.auto && !isDone) ? '<span class="chip man">settled by hand</span>' : '';
-    const won = isDone && winners.length
-      ? `<div class="won">${esc(winners.join(', '))}</div>` : '';
+               : (!c.auto && !isDone) ? '<span class="chip man">by hand</span>' : '';
     return `<tr class="${isDone ? 'done' : ''}${isNow ? ' now' : ''}">
               <td class="wk">Wk ${c.week}</td>
+              <td>${won(r.high_score)}</td>
               <td><span class="title">${esc(c.title)}</span>${chip}
-                  <div class="note">${esc(c.note)}</div>${won}</td>
+                  <div class="note">${esc(c.note)}</div>
+                  <div style="margin-top:4px">${won(r.challenge)}</div></td>
             </tr>`;
   }).join('');
 
-  const label = data.prize ? ` · ${money(data.prize)} each` : '';
-  return $(`<div class="card"><h2>Weekly challenges${label}</h2>
-    <table class="sched"><tbody>${rows}</tbody></table></div>`);
+  return $(`<div class="card"><h2>How to win money each week</h2>
+    <div class="scroll"><table class="sched">
+      <thead><tr><th class="wk">Week</th>
+        <th>High score · ${money(hsPrize)}</th>
+        <th>Weekly challenge · ${money(data.prize)}</th></tr></thead>
+      <tbody>${rows}</tbody></table></div></div>`);
+}
+
+function renderPlayoffs(p) {
+  if (!p || !p.rounds || !p.rounds.length) return null;
+
+  const slot = (t) => {
+    if (t.name) return `<span>${esc(t.name)}</span>`;
+    if (t.from) return `<span class="slot">${t.from} of game ${t.from_match}</span>`;
+    return '<span class="slot">seed TBD</span>';
+  };
+  const team = (t, w) =>
+    `<div class="team${w && t.name && t.name === w ? ' win' : ''}">${slot(t)}</div>`;
+
+  const cols = p.rounds.map(r => `
+    <div class="round">
+      <h3>${esc(r.name)}<span>Week ${r.week}</span></h3>
+      <div class="games">${r.matchups.map(m => `
+        <div class="match${m.label === 'Championship' ? ' title-game' : ''}">
+          <div class="cap">${esc(m.label || 'Game ' + m.m)}</div>
+          ${team(m.t1, m.winner)}${team(m.t2, m.winner)}
+        </div>`).join('')}</div>
+    </div>`).join('');
+
+  const note = p.seeded ? '' :
+    `<div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">
+       Seeds are set after week ${p.playoff_week_start - 1}; the top two seeds get a
+       first-round bye.</div>`;
+
+  const last = p.playoff_week_start + p.rounds.length - 1;
+  return $(`<div class="card"><h2>Playoffs · top ${p.playoff_teams} · weeks ${p.playoff_week_start}–${last}</h2>
+    <div class="scroll"><div class="bracket">${cols}</div></div>${note}</div>`);
 }
 
 async function show(week, index) {
@@ -206,24 +265,29 @@ async function show(week, index) {
   renderWeek(w).forEach(c => app.append(c));
   const s = renderSeason(index.season);
   if (s) app.append(s);
-  const sc = renderChallenges(CHALLENGES, index);
+  const sc = renderChallenges(CHALLENGES, index, w.high_score ? w.high_score.prize : 5);
   if (sc) app.append(sc);
+  const pl = renderPlayoffs(PLAYOFFS);
+  if (pl) app.append(pl);
 }
 
-let CHALLENGES = null;
+let CHALLENGES = null, PLAYOFFS = null;
 
 const loadJSON = (u) => fetch(u, { cache: 'no-store' })
   .then(r => r.ok ? r.json() : null).catch(() => null);
 
 (async () => {
   let index;
-  [index, CHALLENGES] = await Promise.all([
-    loadJSON('data/index.json'), loadJSON('data/challenges.json')]);
+  [index, CHALLENGES, PLAYOFFS] = await Promise.all([
+    loadJSON('data/index.json'), loadJSON('data/challenges.json'),
+    loadJSON('data/playoffs.json')]);
 
   if (!index || !index.weeks || !index.weeks.length) {
     empty('The first results post the Tuesday after week 1 wraps up.');
-    const sc = renderChallenges(CHALLENGES, null);
+    const sc = renderChallenges(CHALLENGES, null, 5);
     if (sc) app.append(sc);
+    const pl = renderPlayoffs(PLAYOFFS);
+    if (pl) app.append(pl);
     return;
   }
   const d = new Date(index.updated);
