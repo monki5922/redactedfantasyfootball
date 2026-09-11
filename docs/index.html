@@ -209,8 +209,8 @@ function weekLock(seasonStart, w) {
 }
 
 /* ---- positions: /players/nfl is ~14MB, so keep only pid -> position ---- */
-async function loadPositions() {
-  try {
+async function loadPositions(force) {
+  if (!force) try {
     const c = JSON.parse(localStorage.getItem(POS_KEY));
     if (c && c.map && Date.now() - c.at < 7 * 864e5) return c.map;
   } catch {}
@@ -246,9 +246,16 @@ async function loadLeague() {
     }
   } catch {}
 
-  const [pos, bracket] = await Promise.all([
+  let [pos, bracket] = await Promise.all([
     loadPositions(),
     j(`${API}/league/${LEAGUE_ID}/winners_bracket`).catch(() => [])]);
+
+  // A player signed since the map was cached would have no position, and would be
+  // silently skipped by the Top QB / RB / WR and K+DEF challenges. If any started
+  // player is unknown, the map is stale - refetch it rather than score a week wrong.
+  const unknown = Object.values(weeks).some(ms =>
+    ms.some(m => (m.starters || []).some(pid => pid && !pos[pid])));
+  if (unknown) pos = await loadPositions(true);
 
   return { state, league, names, slots, weeks, pos, drafted, bracket };
 }
