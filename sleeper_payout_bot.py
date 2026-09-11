@@ -152,7 +152,10 @@ def ugly_win(L):
     return [(w["points"], L.name(w)) for w, _, _ in L.games()], True, "won with {:.2f}"
 
 def perfect_lineup(L):
-    return [(L.optimal_score(m) - m["points"], L.name(m)) for m in L.matchups], True, "left {:.2f} on bench"
+    # a roster that never scored leaves 0.00 on the bench and would win outright
+    rows = [(L.optimal_score(m) - m["points"], L.name(m))
+            for m in L.matchups if m["points"]]
+    return rows, True, "left {:.2f} on bench"
 
 def heartbreaker(L):
     return [(mg, L.name(l)) for _, l, mg in L.games() if mg > 0], True, "lost by {:.2f}"

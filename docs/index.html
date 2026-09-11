@@ -282,6 +282,7 @@ async function loadLeague() {
 
 /* ----------------------------- challenges ------------------------------ */
 const starterPts = (m) => (m.starters || []).map(pid => [pid, (m.players_points || {})[pid] ?? 0]);
+const played = (ms) => ms.filter(m => m.points > 0);
 const benchPts = (m) => { const s = new Set(m.starters || []);
   return Object.entries(m.players_points || {}).filter(([pid]) => !s.has(pid)); };
 
@@ -328,7 +329,7 @@ const CHALLENGES = [
     fmt: v => `won with ${n2(v)}`,
     rows: (L, ms) => pairs(ms).map(([w]) => ({ name: L.names[w.roster_id], value: w.points })) },
   { week: 8,  title: 'Perfect lineup', note: 'Fewest points left on the bench vs. the optimal lineup', low: true,
-    fmt: v => `left ${n2(v)} on bench`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id], value: optimal(m, L.slots, L.pos) - m.points })) },
+    fmt: v => `left ${n2(v)} on bench`, rows: (L, ms) => played(ms).map(m => ({ name: L.names[m.roster_id], value: optimal(m, L.slots, L.pos) - m.points })) },
   { week: 9,  title: 'Top RB', note: 'Highest-scoring starting running back', fmt: v => `RB ${n2(v)} pts`, rows: topPos('RB') },
   { week: 10, title: 'Heartbreaker', note: 'Closest losing margin - the prize goes to the loser', low: true,
     fmt: v => `lost by ${n2(v)}`, rows: (L, ms) => pairs(ms).filter(([, , mg]) => mg > 0).map(([, l, mg]) => ({ name: L.names[l.roster_id], value: mg })) },
