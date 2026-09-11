@@ -164,7 +164,8 @@ function renderSeason(season) {
        <td class="n">${r.winnings ? money(r.winnings) : '—'}</td></tr>`).join('')}</tbody></table></div>`);
 }
 
-function renderChallenges(challenges, index) {
+function renderChallenges(data, index) {
+  const challenges = data && data.weeks;
   if (!challenges || !challenges.length) return null;
   const done = new Set(index ? index.weeks : []);
   const results = (index && index.results) || {};
@@ -185,7 +186,8 @@ function renderChallenges(challenges, index) {
             </tr>`;
   }).join('');
 
-  return $(`<div class="card"><h2>Weekly challenges · $3 each</h2>
+  const label = data.prize ? ` · ${money(data.prize)} each` : '';
+  return $(`<div class="card"><h2>Weekly challenges${label}</h2>
     <table class="sched"><tbody>${rows}</tbody></table></div>`);
 }
 

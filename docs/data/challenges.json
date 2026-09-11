@@ -1,86 +1,89 @@
-[
-  {
-    "week": 1,
-    "title": "Highest score",
-    "note": "Most total points - same as the $5 prize, so that winner takes $8",
-    "auto": true
-  },
-  {
-    "week": 2,
-    "title": "Best bench",
-    "note": "Highest combined bench points",
-    "auto": true
-  },
-  {
-    "week": 3,
-    "title": "Closest to 100",
-    "note": "Total nearest to 100.00, over or under",
-    "auto": true
-  },
-  {
-    "week": 4,
-    "title": "Biggest blowout",
-    "note": "Largest margin of victory",
-    "auto": true
-  },
-  {
-    "week": 5,
-    "title": "Top QB",
-    "note": "Highest-scoring starting quarterback",
-    "auto": true
-  },
-  {
-    "week": 6,
-    "title": "Kicker & defense combo",
-    "note": "Highest combined kicker + defense points",
-    "auto": true
-  },
-  {
-    "week": 7,
-    "title": "Waiver-wire hero",
-    "note": "Highest-scoring starter that roster did not draft",
-    "auto": true
-  },
-  {
-    "week": 8,
-    "title": "Perfect lineup",
-    "note": "Fewest points left on the bench vs. the optimal lineup",
-    "auto": true
-  },
-  {
-    "week": 9,
-    "title": "Top RB",
-    "note": "Highest-scoring starting running back",
-    "auto": true
-  },
-  {
-    "week": 10,
-    "title": "Heartbreaker",
-    "note": "Closest losing margin - the prize goes to the loser",
-    "auto": true
-  },
-  {
-    "week": 11,
-    "title": "Top WR",
-    "note": "Highest-scoring starting wide receiver",
-    "auto": true
-  },
-  {
-    "week": 12,
-    "title": "Flex master",
-    "note": "Highest combined points from the two FLEX slots",
-    "auto": true
-  },
-  {
-    "week": 13,
-    "title": "Rivalry week",
-    "note": "Most points from players in divisional NFL games",
-    "auto": false
-  },
-  {
-    "week": 14,
-    "title": "Season-high",
-    "note": "Highest single-week score of the entire season",
-    "auto": true
-  }
-]
+{
+  "prize": 2.5,
+  "weeks": [
+    {
+      "week": 1,
+      "title": "Highest score",
+      "note": "Most total points - same as the high-score prize, so that winner takes $7.50",
+      "auto": true
+    },
+    {
+      "week": 2,
+      "title": "Best bench",
+      "note": "Highest combined bench points",
+      "auto": true
+    },
+    {
+      "week": 3,
+      "title": "Closest to 100",
+      "note": "Total nearest to 100.00, over or under",
+      "auto": true
+    },
+    {
+      "week": 4,
+      "title": "Biggest blowout",
+      "note": "Largest margin of victory",
+      "auto": true
+    },
+    {
+      "week": 5,
+      "title": "Top QB",
+      "note": "Highest-scoring starting quarterback",
+      "auto": true
+    },
+    {
+      "week": 6,
+      "title": "Kicker & defense combo",
+      "note": "Highest combined kicker + defense points",
+      "auto": true
+    },
+    {
+      "week": 7,
+      "title": "Waiver-wire hero",
+      "note": "Highest-scoring starter that roster did not draft",
+      "auto": true
+    },
+    {
+      "week": 8,
+      "title": "Perfect lineup",
+      "note": "Fewest points left on the bench vs. the optimal lineup",
+      "auto": true
+    },
+    {
+      "week": 9,
+      "title": "Top RB",
+      "note": "Highest-scoring starting running back",
+      "auto": true
+    },
+    {
+      "week": 10,
+      "title": "Heartbreaker",
+      "note": "Closest losing margin - the prize goes to the loser",
+      "auto": true
+    },
+    {
+      "week": 11,
+      "title": "Top WR",
+      "note": "Highest-scoring starting wide receiver",
+      "auto": true
+    },
+    {
+      "week": 12,
+      "title": "Flex master",
+      "note": "Highest combined points from the two FLEX slots",
+      "auto": true
+    },
+    {
+      "week": 13,
+      "title": "Rivalry week",
+      "note": "Most points from players in divisional NFL games",
+      "auto": false
+    },
+    {
+      "week": 14,
+      "title": "Season-high",
+      "note": "Highest single-week score of the entire season",
+      "auto": true
+    }
+  ]
+}

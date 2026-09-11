@@ -24,7 +24,7 @@ from pathlib import Path
 # ---------------------------------------------------------------- config ----
 LEAGUE_ID = os.environ.get("LEAGUE_ID") or "1403192355279904768"
 HIGH_SCORE_PRIZE = 5.00
-CHALLENGE_PRIZE = 3.00
+CHALLENGE_PRIZE = 2.50
 PAID_FILE = Path("paid_weeks.json")
 SITE_DATA = Path("docs/data")
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK") or None
@@ -209,7 +209,8 @@ CHALLENGES = {
 
 # How each challenge is settled, in plain English, for the published schedule.
 CHALLENGE_NOTES = {
-    1:  "Most total points - same as the $5 prize, so that winner takes $8",
+    1:  "Most total points - same as the high-score prize, so that winner "
+        "takes ${combined:.2f}",
     2:  "Highest combined bench points",
     3:  "Total nearest to 100.00, over or under",
     4:  "Largest margin of victory",
@@ -254,13 +255,17 @@ def pay_lines(names, prize, note):
 def write_challenges():
     """Publish the full 14-week challenge schedule, independent of any results."""
     SITE_DATA.mkdir(parents=True, exist_ok=True)
-    (SITE_DATA / "challenges.json").write_text(json.dumps([
-        {"week": wk,
-         "title": title.split(" (")[0],
-         "note": CHALLENGE_NOTES.get(wk, ""),
-         "auto": fn is not manual}
-        for wk, (title, fn) in sorted(CHALLENGES.items())
-    ], indent=2) + "\n")
+    (SITE_DATA / "challenges.json").write_text(json.dumps({
+        "prize": CHALLENGE_PRIZE,
+        "weeks": [
+            {"week": wk,
+             "title": title.split(" (")[0],
+             "note": CHALLENGE_NOTES.get(wk, "").format(
+                 combined=HIGH_SCORE_PRIZE + CHALLENGE_PRIZE),
+             "auto": fn is not manual}
+            for wk, (title, fn) in sorted(CHALLENGES.items())
+        ],
+    }, indent=2) + "\n")
 
 
 def write_site_data(result):
