@@ -10,14 +10,14 @@
   --bg: #f6f7f9; --panel: #ffffff; --ink: #14171a; --muted: #667085;
   --line: #e3e6ea; --accent: #1a7f5a; --accent-soft: #e6f4ee; --gold: #9a6b00;
   --gold-soft: #fdf3dd; --radius: 14px;
-  --bar: #9a6b00; --track: #ece7dc;
+  --bar: #9a6b00; --track: #ece7dc; --wire: #c3ccd6;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0e1114; --panel: #171b20; --ink: #e8eaed; --muted: #939ba7;
     --line: #262c33; --accent: #3ecf8e; --accent-soft: #12281f; --gold: #e5b95c;
     --gold-soft: #2a2214;
-    --bar: #b8882c; --track: #23262b;
+    --bar: #b8882c; --track: #23262b; --wire: #3d4650;
   }
 }
 * { box-sizing: border-box; }
@@ -138,24 +138,45 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 3
 .sched tr.now { background: var(--accent-soft); }
 .sched tr.now .wk { color: var(--accent); }
 .pending { color: var(--muted); }
-.bracket { display: flex; gap: 26px; min-width: 620px; }
-.round { display: flex; flex-direction: column; flex: 1; min-width: 178px; }
-.round > h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-              color: var(--ink); margin: 0 0 12px; font-weight: 600; }
-.round > h3 span { color: var(--muted); margin-left: 6px; font-weight: 500; }
-.games { flex: 1; display: flex; flex-direction: column;
-         justify-content: center; gap: 16px; }
-.match { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-.match .cap { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
-              color: var(--muted); padding: 5px 11px; background: var(--bg);
-              border-bottom: 1px solid var(--line); font-weight: 600; }
-.match.title-game { border-color: var(--gold); }
-.match.title-game .cap { color: var(--gold); background: var(--gold-soft); }
-.team { display: flex; justify-content: space-between; align-items: center;
-        gap: 8px; padding: 10px 11px; font-size: 13.5px; }
-.team + .team { border-top: 1px solid var(--line); }
-.team .slot { color: var(--muted); font-style: italic; font-size: 12.5px; }
-.team.win { background: var(--accent-soft); font-weight: 650; }
+.br { position: relative; display: grid; align-items: center; gap: 0 26px;
+      grid-template-columns: repeat(2, minmax(130px, 1fr)) minmax(150px, 1.1fr)
+                             repeat(2, minmax(130px, 1fr));
+      min-width: 764px; }
+.brlines { position: absolute; inset: 0; width: 100%; height: 100%;
+           pointer-events: none; overflow: visible; }
+.brlines path { fill: none; stroke: var(--wire); stroke-width: 1.5;
+                stroke-linejoin: round; }
+.col { display: flex; flex-direction: column; justify-content: center; gap: 22px; }
+.col > h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+            color: var(--muted); margin: 0; font-weight: 600; text-align: center; }
+.m { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+     background: var(--panel); }
+.m .cap { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+          color: var(--muted); padding: 5px 11px; background: var(--bg);
+          border-bottom: 1px solid var(--line); font-weight: 600; }
+.m .team { display: flex; align-items: center; gap: 8px; padding: 10px 11px;
+           font-size: 13.5px; }
+.m .team + .team { border-top: 1px solid var(--line); }
+.m .slot { color: var(--muted); font-style: italic; font-size: 12.5px; }
+.m .team.win { background: var(--accent-soft); font-weight: 650; }
+.m.final { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+.m.final .cap { color: var(--gold); background: var(--gold-soft); }
+.m.bye { border-style: dashed; background: transparent; }
+.m.bye .cap { background: transparent; }
+.m.bye .note2 { padding: 8px 11px; font-size: 12px; color: var(--muted);
+                border-top: 1px solid var(--line); }
+.consol { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 22px;
+          padding-top: 18px; border-top: 1px solid var(--line); }
+.consol .m { flex: 1 1 210px; }
+.m.final { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+.m.final .cap { color: var(--gold); background: var(--gold-soft); }
+.m.bye { border-style: dashed; background: transparent; }
+.m.bye .cap { background: transparent; }
+.m.bye .note2 { padding: 8px 11px; font-size: 12px; color: var(--muted);
+                border-top: 1px solid var(--line); }
+.consol { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 22px;
+          padding-top: 18px; border-top: 1px solid var(--line); }
+.consol .m { flex: 1 1 210px; }
 .chip { font-size: 10px; font-weight: 600; text-transform: uppercase;
         letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px;
         margin-left: 8px; white-space: nowrap; }
@@ -246,9 +267,10 @@ async function loadLeague() {
     }
   } catch {}
 
-  let [pos, bracket] = await Promise.all([
+  let [pos, bracket, losers] = await Promise.all([
     loadPositions(),
-    j(`${API}/league/${LEAGUE_ID}/winners_bracket`).catch(() => [])]);
+    j(`${API}/league/${LEAGUE_ID}/winners_bracket`).catch(() => []),
+    j(`${API}/league/${LEAGUE_ID}/losers_bracket`).catch(() => [])]);
 
   // A player signed since the map was cached would have no position, and would be
   // silently skipped by the Top QB / RB / WR and K+DEF challenges. If any started
@@ -257,7 +279,7 @@ async function loadLeague() {
     ms.some(m => (m.starters || []).some(pid => pid && !pos[pid])));
   if (unknown) pos = await loadPositions(true);
 
-  return { state, league, names, slots, weeks, pos, drafted, bracket };
+  return { state, league, names, slots, weeks, pos, drafted, bracket, losers };
 }
 
 /* ----------------------------- challenges ------------------------------ */
@@ -417,37 +439,130 @@ function cardLatest(L, season) {
         <td class="n">${n2(m.points)}</td></tr>`).join('')}</tbody></table></div></div>`);
 }
 
-function cardBracket(L) {
-  const b = L.bracket;
+/* A 6-team bracket: two first-round games, two byes, converging on a final in
+   the middle. Both of Sleeper's brackets share this shape, so one renderer does
+   the playoffs and the toilet bowl - only the labels differ. */
+function bracketFigure(b, L, cfg) {
   if (!b || !b.length) return null;
-  const start = L.league.settings.playoff_week_start || 15;
-  const seeded = L.state.week >= start;
-  const ROUND = { 1: 'Wild card', 2: 'Semifinals', 3: 'Championship' };
-  const PLACE = { 1: 'Championship', 3: '3rd place', 5: '5th place' };
-  const rounds = {};
-  [...b].sort((x, y) => x.r - y.r || x.m - y.m).forEach(m => {
-    (rounds[m.r] = rounds[m.r] || []).push(m); });
+  const seeded = L.state.week >= cfg.start;
+  const by = {}; b.forEach(m => by[m.m] = m);
+  const rounds = {}; b.forEach(m => (rounds[m.r] = rounds[m.r] || []).push(m));
 
+  const named = (rid) => (seeded && rid) ? L.names[rid] : null;
   const slot = (m, k) => {
-    const src = m[k + '_from'] || {};
-    const nm = seeded && m[k] ? L.names[m[k]] : null;
+    const nm = named(m[k]);
     if (nm) return `<span>${esc(nm)}</span>`;
+    const src = m[k + '_from'] || {};
     if (src.w) return `<span class="slot">winner of game ${src.w}</span>`;
     if (src.l) return `<span class="slot">loser of game ${src.l}</span>`;
     return '<span class="slot">seed TBD</span>';
   };
-  const cols = Object.keys(rounds).map(Number).sort((a, b2) => a - b2).map(r => `
-    <div class="round"><h3>${ROUND[r] || 'Round ' + r}<span>Week ${start + r - 1}</span></h3>
-      <div class="games">${rounds[r].map(m => `
-        <div class="match${m.p === 1 ? ' title-game' : ''}">
-          <div class="cap">${esc(PLACE[m.p] || 'Game ' + m.m)}</div>
-          <div class="team${seeded && m.w && m.w === m.t1 ? ' win' : ''}">${slot(m, 't1')}</div>
-          <div class="team${seeded && m.w && m.w === m.t2 ? ' win' : ''}">${slot(m, 't2')}</div>
-        </div>`).join('')}</div></div>`).join('');
-  const nRounds = Object.keys(rounds).length;
-  return $(`<div class="card"><h2>Playoffs · top ${L.league.settings.playoff_teams || 6} · weeks ${start}–${start + nRounds - 1}</h2>
-    <div class="scroll"><div class="bracket">${cols}</div></div>
-    ${seeded ? '' : `<div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">Seeds are set after week ${start - 1}; the top two seeds get a first-round bye.</div>`}</div>`);
+  const team = (m, k) =>
+    `<div class="team${seeded && m.w && m.w === m[k] ? ' win' : ''}">${slot(m, k)}</div>`;
+  const match = (m, cls, cap) =>
+    `<div class="m${cls ? ' ' + cls : ''}" data-id="m${m.m}">
+       <div class="cap">${esc(cap)}</div>${team(m, 't1')}${team(m, 't2')}</div>`;
+
+  // round 1 games and, feeding the same round-2 games, the two byes
+  const r1 = (rounds[1] || []).sort((a, z) => a.m - z.m);
+  const semis = (rounds[2] || []).filter(m => !m.p).sort((a, z) => a.m - z.m);
+  const final = (rounds[3] || []).find(m => m.p === 1) || (rounds[3] || [])[0];
+  const placings = b.filter(m => m.p && m !== final).sort((a, z) => a.p - z.p);
+
+  const byeCard = (semi, i) => {
+    const nm = named(semi.t1);
+    const seed = cfg.seedOffset + i + 1;
+    return `<div class="m bye" data-id="bye${semi.m}">
+      <div class="cap">Bye · week ${cfg.start}</div>
+      <div class="team">${nm ? `<span>${esc(nm)}</span>`
+        : `<span class="slot">${seed} seed</span>`}</div>
+      <div class="note2">straight through to week ${cfg.start + 1}</div></div>`;
+  };
+
+  const side = (i) => {
+    const semi = semis[i]; if (!semi) return ['', ''];
+    const g = r1[i];
+    return [
+      `<div class="col"><h3>${esc(cfg.rounds[1])} · wk ${cfg.start}</h3>
+         ${g ? match(g, '', 'Game ' + g.m) : ''}${byeCard(semi, i)}</div>`,
+      `<div class="col"><h3>${esc(cfg.rounds[2])} · wk ${cfg.start + 1}</h3>
+         ${match(semi, '', 'Game ' + semi.m)}</div>`];
+  };
+  const [L1, L2] = side(0), [R2, R1] = side(1).reverse();
+
+  const centre = `<div class="col"><h3>${esc(cfg.rounds[3])} · wk ${cfg.start + 2}</h3>
+      ${final ? match(final, 'final', cfg.places[final.p] || 'Final') : ''}</div>`;
+
+  const consol = placings.length ? `<div class="consol">${placings.map(m =>
+      match(m, '', cfg.places[m.p] || `Game ${m.m}`)).join('')}</div>` : '';
+
+  const card = $(`<div class="card"><h2>${esc(cfg.title)}</h2>
+    <div class="scroll"><div class="br">
+      <svg class="brlines" xmlns="http://www.w3.org/2000/svg"></svg>
+      ${L1}${L2}${centre}${R2}${R1}
+    </div></div>${consol}
+    ${cfg.note ? `<div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">${esc(cfg.note)}</div>` : ''}
+    </div>`);
+
+  // connectors, measured from the laid-out DOM so card heights don't matter
+  const links = [];
+  semis.forEach((semi, i) => {
+    const dir = i === 0 ? 'lr' : 'rl';
+    if (r1[i]) links.push([`m${r1[i].m}`, `m${semi.m}`, dir]);
+    links.push([`bye${semi.m}`, `m${semi.m}`, dir]);
+    if (final) links.push([`m${semi.m}`, `m${final.m}`, dir]);
+  });
+  const root = card.querySelector('.br');
+  root.__links = links;
+  const draw = () => drawLinks(root);
+  requestAnimationFrame(draw);
+  if ('ResizeObserver' in window) new ResizeObserver(draw).observe(root);
+  return card;
+}
+
+function drawLinks(root) {
+  const svg = root.querySelector('svg.brlines');
+  const R = root.getBoundingClientRect();
+  if (!R.width) return;
+  const box = (id) => {
+    const el = root.querySelector(`[data-id="${id}"]`);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { l: r.left - R.left, r: r.right - R.left, y: r.top - R.top + r.height / 2 };
+  };
+  const d = [];
+  for (const [from, to, dir] of (root.__links || [])) {
+    const a = box(from), z = box(to);
+    if (!a || !z) continue;
+    const [ax, zx] = dir === 'lr' ? [a.r, z.l] : [a.l, z.r];
+    const mid = (ax + zx) / 2;
+    d.push(`M${ax.toFixed(1)} ${a.y.toFixed(1)}H${mid.toFixed(1)}V${z.y.toFixed(1)}H${zx.toFixed(1)}`);
+  }
+  svg.setAttribute('viewBox', `0 0 ${R.width} ${R.height}`);
+  svg.innerHTML = d.map(p => `<path d="${p}"/>`).join('');
+}
+
+function cardBracket(L) {
+  const start = (L.league.settings || {}).playoff_week_start || 15;
+  const teams = (L.league.settings || {}).playoff_teams || 6;
+  const out = [];
+  const champs = bracketFigure(L.bracket, L, {
+    start, seedOffset: 0, title: `Playoffs · top ${teams} · weeks ${start}–${start + 2}`,
+    rounds: { 1: 'Wild card', 2: 'Semifinals', 3: 'Championship' },
+    places: { 1: 'Championship', 3: '3rd place', 5: '5th place' },
+    note: L.state.week >= start ? '' :
+      `Seeds are set after week ${start - 1}. The top two seeds sit out the wild card round.`,
+  });
+  if (champs) out.push(champs);
+
+  const bowl = bracketFigure(L.losers, L, {
+    start, seedOffset: teams, title: 'Toilet bowl · everyone who missed the playoffs',
+    rounds: { 1: 'Round 1', 2: 'Round 2', 3: 'Final' },
+    places: { 1: '7th place', 3: '9th place', 5: '11th place' },
+    note: 'Whoever loses the 11th place game finishes last.',
+  });
+  if (bowl) out.push(bowl);
+  return out;
 }
 
 function cardWinnings(rows) {
@@ -537,7 +652,7 @@ function paint(L) {
   if (latest) app.append(latest); else app.append($(`<div class="card"><div class="empty">
     <strong>No results yet</strong>The first week settles the Tuesday after it wraps up.</div></div>`));
   app.append(cardWeekTable(season));
-  const br = cardBracket(L); if (br) app.append(br);
+  cardBracket(L).forEach(c => app.append(c));
   app.append(cardWinnings(winningsTable(L, season)));
 
   const next = season.find(w => !w.done);
