@@ -46,7 +46,7 @@ header { margin-bottom: 28px; display: flex; align-items: flex-start;
            font-size: 12.5px; color: var(--muted); margin-bottom: 7px; gap: 12px; }
 .potline b { color: var(--ink); font-size: 14px; font-variant-numeric: tabular-nums; }
 .wrow { display: grid; align-items: center; gap: 12px;
-        grid-template-columns: 20px minmax(104px, 1.1fr) minmax(80px, 2fr) 68px;
+        grid-template-columns: 20px minmax(132px, 1.3fr) minmax(70px, 1.7fr) 66px;
         padding: 9px 0; border-top: 1px solid var(--line); }
 .wrow.first { border-top: 0; }
 .wrow .who { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
@@ -61,7 +61,25 @@ header { margin-bottom: 28px; display: flex; align-items: flex-start;
         border-radius: 0 4px 4px 0;              /* square at baseline, rounded data-end */
         transition: width 900ms cubic-bezier(.22,.85,.3,1); }
 .lit .fill { width: var(--w); }
-@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+
+/* Nobody-won-anything rows: the bar makes a run at it, loses its nerve a few
+   times and settles back on zero. Damped, so it reads as giving up. */
+@keyframes nerve {
+  0%   { width: 0; }
+  16%  { width: 9%; }
+  31%  { width: 1.5%; }
+  45%  { width: 5.5%; }
+  58%  { width: 1%; }
+  70%  { width: 3.2%; }
+  81%  { width: 0.6%; }
+  90%  { width: 1.5%; }
+  100% { width: 0; }
+}
+.lit .fill.nil { animation: nerve 1600ms cubic-bezier(.33,.68,.42,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .fill { transition: none; }
+  .lit .fill.nil { animation: none; }
+}
 @media (max-width: 560px) {
   .wrow { grid-template-columns: 18px 1fr 62px; }
   .wrow .track { grid-column: 2 / 4; }
@@ -437,16 +455,18 @@ function cardWinnings(rows) {
     if (r.high) bits.push(`${r.high} high score`);
     if (r.chal) bits.push(`${r.chal} challenge${r.chal > 1 ? 's' : ''}`);
     if (r.total) bits.push(`${share.toFixed(1)}% of pot`);
+    const meta = bits.length ? bits.join(' · ') : 'nothing yet';
     const tip = `${r.name} — ${usd(r.total)}` +
       (r.best ? ` · best week ${n2(r.best)}` : '') +
       (bits.length ? ` · ${bits.join(', ')}` : '');
     return `<div class="wrow${i === 0 ? ' first' : ''}" title="${esc(tip)}">
         <div class="rank">${i + 1}</div>
         <div><div class="who">${esc(r.name)}</div>
-             <div class="meta">${bits.length ? esc(bits.join(' · ')) : 'nothing yet'}</div></div>
-        <div class="track"><div class="fill" style="--w:${pct.toFixed(2)}%;
-             transition-delay:${i * 55}ms"></div></div>
-        <div class="amt${r.total ? '' : ' zero'}">${r.total ? usd(r.total) : '—'}</div>
+             <div class="meta">${esc(meta)}</div></div>
+        <div class="track"><div class="fill${r.total ? '' : ' nil'}"
+             style="--w:${pct.toFixed(2)}%; transition-delay:${i * 55}ms;
+                    animation-delay:${i * 55}ms"></div></div>
+        <div class="amt${r.total ? '' : ' zero'}">${r.total ? usd(r.total) : usd(0)}</div>
       </div>`;
   };
 
