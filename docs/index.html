@@ -41,6 +41,16 @@ header { margin-bottom: 28px; display: flex; align-items: flex-start;
 
 /* Ranked winnings chart. One series -> one fill; bar length is the only
    magnitude channel, and values stay in text tokens, never the fill colour. */
+.prizerow { display: grid; gap: 10px; margin: 2px 0 20px;
+             grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+.ptile { border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; }
+.ptile .plabel { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+                 color: var(--muted); font-weight: 600; }
+.ptile .pamt { font-size: 21px; font-weight: 650; margin-top: 5px;
+               letter-spacing: -0.01em; }
+.ptile.p1 { border-color: var(--gold); background: var(--gold-soft); }
+.ptile.p1 .plabel, .ptile.p1 .pamt { color: var(--gold); }
+.ptile.weekly { border-style: dashed; }
 .pot { margin: -4px 0 18px; }
 .potline { display: flex; justify-content: space-between; align-items: baseline;
            font-size: 12.5px; color: var(--muted); margin-bottom: 7px; gap: 12px; }
@@ -214,6 +224,9 @@ const LEAGUE_ID = '1403192355279904768';
 const API = 'https://api.sleeper.app/v1';
 const HIGH_SCORE_PRIZE = 5.00, CHALLENGE_PRIZE = 2.50, SEASON_WEEKS = 14;
 const BUY_IN = 25.00, LEAGUE_SIZE = 12;
+const SEASON_PRIZES = { 1: 120, 2: 50, 3: 25 };
+const SEASON_TOTAL_WEEKLY = (HIGH_SCORE_PRIZE + CHALLENGE_PRIZE) * SEASON_WEEKS;
+const WEEKLY_LABEL = `Weekly · ${SEASON_WEEKS} wks`;
 const POS_KEY = 'ffp.positions.v1', SNAP_KEY = 'ffp.snapshot.v1';
 
 const $ = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstChild; };
@@ -606,6 +619,13 @@ function cardWinnings(rows) {
   };
 
   const card = $(`<div class="card"><h2>Total winnings</h2>
+    <div class="prizerow">
+      ${[[1, '1st place'], [2, '2nd place'], [3, '3rd place']].map(([n, label]) => `
+        <div class="ptile p${n}"><div class="plabel">${label}</div>
+          <div class="pamt">${money(SEASON_PRIZES[n])}</div></div>`).join('')}
+      <div class="ptile weekly"><div class="plabel">${WEEKLY_LABEL}</div>
+        <div class="pamt">${money(SEASON_TOTAL_WEEKLY)}</div></div>
+    </div>
     <div class="pot">
       <div class="potline"><span><b>${usd(paid)}</b> of ${usd(POT)} paid out</span>
         <span>${usd(POT - paid)} still in the pot</span></div>
