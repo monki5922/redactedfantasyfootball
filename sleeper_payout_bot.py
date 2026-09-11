@@ -207,6 +207,25 @@ CHALLENGES = {
 }
 
 
+# How each challenge is settled, in plain English, for the published schedule.
+CHALLENGE_NOTES = {
+    1:  "Most total points - same as the $5 prize, so that winner takes $8",
+    2:  "Highest combined bench points",
+    3:  "Total nearest to 100.00, over or under",
+    4:  "Largest margin of victory",
+    5:  "Highest-scoring starting quarterback",
+    6:  "Highest combined kicker + defense points",
+    7:  "Highest-scoring starter that roster did not draft",
+    8:  "Fewest points left on the bench vs. the optimal lineup",
+    9:  "Highest-scoring starting running back",
+    10: "Closest losing margin - the prize goes to the loser",
+    11: "Highest-scoring starting wide receiver",
+    12: "Highest combined points from the two FLEX slots",
+    13: "Most points from players in divisional NFL games",
+    14: "Highest single-week score of the entire season",
+}
+
+
 # -------------------------------------------------------------- helpers ----
 def winners(rows, lower_is_better):
     if not rows:
@@ -232,6 +251,18 @@ def pay_lines(names, prize, note):
     return out
 
 
+def write_challenges():
+    """Publish the full 14-week challenge schedule, independent of any results."""
+    SITE_DATA.mkdir(parents=True, exist_ok=True)
+    (SITE_DATA / "challenges.json").write_text(json.dumps([
+        {"week": wk,
+         "title": title.split(" (")[0],
+         "note": CHALLENGE_NOTES.get(wk, ""),
+         "auto": fn is not manual}
+        for wk, (title, fn) in sorted(CHALLENGES.items())
+    ], indent=2) + "\n")
+
+
 def write_site_data(result):
     """Write the public GitHub Pages payload.
 
@@ -239,6 +270,7 @@ def write_site_data(result):
     and challenge results. Never Venmo handles, pay links or real names: the
     published site is world-readable.
     """
+    write_challenges()
     weeks_dir = SITE_DATA / "weeks"
     weeks_dir.mkdir(parents=True, exist_ok=True)
     (weeks_dir / f"{result['week']}.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -273,6 +305,8 @@ def write_site_data(result):
         "updated": result["generated_at"],
         "latest_week": result["week"],
         "weeks": [w["week"] for w in weeks],
+        "results": {str(w["week"]): (w.get("challenge") or {}).get("winners", [])
+                    for w in weeks},
         "season": sorted(tally.values(),
                          key=lambda r: (-r["winnings"], -r["best_score"], r["name"])),
     }, indent=2) + "\n")

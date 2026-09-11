@@ -70,6 +70,19 @@ nav button[aria-current="true"] {
 .empty { color: var(--muted); text-align: center; padding: 40px 20px; }
 .empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 6px; }
 footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 32px; }
+.sched td { vertical-align: top; }
+.sched .wk { color: var(--muted); width: 46px; white-space: nowrap; }
+.sched .title { font-weight: 600; }
+.sched .note { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.sched tr.done .title { color: var(--muted); font-weight: 500; }
+.sched tr.now { background: var(--accent-soft); }
+.sched tr.now .wk { color: var(--accent); font-weight: 700; }
+.chip { font-size: 10px; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px;
+        margin-left: 8px; white-space: nowrap; }
+.chip.up { color: var(--accent); background: var(--accent-soft); }
+.chip.man { color: var(--gold); background: var(--gold-soft); }
+.won { font-size: 13px; color: var(--accent); font-weight: 600; margin-top: 3px; }
 </style>
 </head>
 <body>
@@ -92,7 +105,7 @@ const sub = document.getElementById('sub');
 function empty(msg) {
   sub.textContent = '';
   app.innerHTML = '';
-  app.append($(`<div class="card"><div class="empty"><strong>Nothing to show yet</strong>${esc(msg)}</div></div>`));
+  app.append($(`<div class="card"><div class="empty"><strong>No results yet</strong>${esc(msg)}</div></div>`));
 }
 
 function prize(kind, label, block) {
@@ -151,6 +164,31 @@ function renderSeason(season) {
        <td class="n">${r.winnings ? money(r.winnings) : '—'}</td></tr>`).join('')}</tbody></table></div>`);
 }
 
+function renderChallenges(challenges, index) {
+  if (!challenges || !challenges.length) return null;
+  const done = new Set(index ? index.weeks : []);
+  const results = (index && index.results) || {};
+  const next = challenges.find(c => !done.has(c.week));
+
+  const rows = challenges.map(c => {
+    const isDone = done.has(c.week);
+    const isNow = next && c.week === next.week;
+    const winners = results[String(c.week)] || [];
+    const chip = isNow ? '<span class="chip up">up next</span>'
+               : (!c.auto && !isDone) ? '<span class="chip man">settled by hand</span>' : '';
+    const won = isDone && winners.length
+      ? `<div class="won">${esc(winners.join(', '))}</div>` : '';
+    return `<tr class="${isDone ? 'done' : ''}${isNow ? ' now' : ''}">
+              <td class="wk">Wk ${c.week}</td>
+              <td><span class="title">${esc(c.title)}</span>${chip}
+                  <div class="note">${esc(c.note)}</div>${won}</td>
+            </tr>`;
+  }).join('');
+
+  return $(`<div class="card"><h2>Weekly challenges · $3 each</h2>
+    <table class="sched"><tbody>${rows}</tbody></table></div>`);
+}
+
 async function show(week, index) {
   const w = await fetch(`data/weeks/${week}.json`).then(r => r.json());
   app.innerHTML = '';
@@ -166,19 +204,25 @@ async function show(week, index) {
   renderWeek(w).forEach(c => app.append(c));
   const s = renderSeason(index.season);
   if (s) app.append(s);
+  const sc = renderChallenges(CHALLENGES, index);
+  if (sc) app.append(sc);
 }
+
+let CHALLENGES = null;
+
+const loadJSON = (u) => fetch(u, { cache: 'no-store' })
+  .then(r => r.ok ? r.json() : null).catch(() => null);
 
 (async () => {
   let index;
-  try {
-    const r = await fetch('data/index.json', { cache: 'no-store' });
-    if (!r.ok) throw new Error(r.status);
-    index = await r.json();
-  } catch {
-    return empty('The first results post the Tuesday after week 1 wraps up.');
-  }
-  if (!index.weeks || !index.weeks.length) {
-    return empty('The first results post the Tuesday after week 1 wraps up.');
+  [index, CHALLENGES] = await Promise.all([
+    loadJSON('data/index.json'), loadJSON('data/challenges.json')]);
+
+  if (!index || !index.weeks || !index.weeks.length) {
+    empty('The first results post the Tuesday after week 1 wraps up.');
+    const sc = renderChallenges(CHALLENGES, null);
+    if (sc) app.append(sc);
+    return;
   }
   const d = new Date(index.updated);
   sub.textContent = isNaN(d) ? '' : 'Last updated ' +
