@@ -165,18 +165,21 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 3
 .m.bye .cap { background: transparent; }
 .m.bye .note2 { padding: 8px 11px; font-size: 12px; color: var(--muted);
                 border-top: 1px solid var(--line); }
+.br.bowl { grid-template-columns: minmax(150px, 1fr) minmax(184px, 1.2fr)
+                                 minmax(150px, 1fr); min-width: 560px; }
+.m.final.bowl { border-color: #a04b3c; box-shadow: 0 0 0 3px rgba(160,75,60,.13); }
+.m.final.bowl .cap { color: #a04b3c; background: rgba(160,75,60,.1); }
+@media (prefers-color-scheme: dark) {
+  .m.final.bowl { border-color: #d4705c; box-shadow: 0 0 0 3px rgba(212,112,92,.12); }
+  .m.final.bowl .cap { color: #d4705c; background: rgba(212,112,92,.12); }
+}
+.m .note2 { padding: 8px 11px; font-size: 12px; color: var(--muted);
+            border-top: 1px solid var(--line); }
+.consolhead { flex: 1 0 100%; font-size: 11px; text-transform: uppercase;
+              letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
 .consol { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 22px;
           padding-top: 18px; border-top: 1px solid var(--line); }
-.consol .m { flex: 1 1 210px; }
-.m.final { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
-.m.final .cap { color: var(--gold); background: var(--gold-soft); }
-.m.bye { border-style: dashed; background: transparent; }
-.m.bye .cap { background: transparent; }
-.m.bye .note2 { padding: 8px 11px; font-size: 12px; color: var(--muted);
-                border-top: 1px solid var(--line); }
-.consol { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 22px;
-          padding-top: 18px; border-top: 1px solid var(--line); }
-.consol .m { flex: 1 1 210px; }
+.consol .m { flex: 1 1 200px; }
 .chip { font-size: 10px; font-weight: 600; text-transform: uppercase;
         letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px;
         margin-left: 8px; white-space: nowrap; }
@@ -542,6 +545,73 @@ function drawLinks(root) {
   svg.innerHTML = d.map(p => `<path d="${p}"/>`).join('');
 }
 
+/* The toilet bowl runs the other way: you get closer to the prize by losing.
+   Sleeper still advances winners internally, so the race to last place is the
+   loser chain - drop your week 15 game, drop the p=5 game, finish 12th. The
+   two byes skip week 15 entirely and so cannot reach it. */
+function bowlFigure(b, L, cfg) {
+  if (!b || !b.length) return null;
+  const seeded = L.state.week >= cfg.start;
+  const named = (rid) => (seeded && rid) ? L.names[rid] : null;
+  const slot = (m, k) => {
+    const nm = named(m[k]);
+    if (nm) return `<span>${esc(nm)}</span>`;
+    const src = m[k + '_from'] || {};
+    if (src.w) return `<span class="slot">winner of game ${src.w}</span>`;
+    if (src.l) return `<span class="slot">loser of game ${src.l}</span>`;
+    return '<span class="slot">seed TBD</span>';
+  };
+  const team = (m, k) =>
+    `<div class="team${seeded && m.w && m.w === m[k] ? ' win' : ''}">${slot(m, k)}</div>`;
+  const match = (m, cls, cap, foot) =>
+    `<div class="m${cls ? ' ' + cls : ''}" data-id="m${m.m}">
+       <div class="cap">${esc(cap)}</div>${team(m, 't1')}${team(m, 't2')}
+       ${foot ? `<div class="note2">${esc(foot)}</div>` : ''}</div>`;
+
+  const r1 = b.filter(m => m.r === 1).sort((a, z) => a.m - z.m);
+  const bowlFinal = b.find(m => m.p === 5);           // the 11th/12th game
+  const semis = b.filter(m => m.r === 2 && !m.p).sort((a, z) => a.m - z.m);
+  const escapes = b.filter(m => m.p && m !== bowlFinal).sort((a, z) => a.p - z.p);
+  if (!bowlFinal) return null;
+
+  const byeCard = (semi, i) => {
+    const nm = named(semi.t1);
+    return `<div class="m bye" data-id="bye${semi.m}">
+      <div class="cap">Bye · week ${cfg.start}</div>
+      <div class="team">${nm ? `<span>${esc(nm)}</span>`
+        : `<span class="slot">${cfg.seedOffset + i + 1} seed</span>`}</div>
+      <div class="note2">sits out week ${cfg.start} — safe from last</div></div>`;
+  };
+
+  const col = (i, head) => `<div class="col"><h3>${esc(head)}</h3>
+      ${r1[i] ? match(r1[i], '', 'Game ' + r1[i].m, 'loser drops to the final') : ''}
+      ${semis[i] ? byeCard(semis[i], i) : ''}</div>`;
+
+  const centre = `<div class="col"><h3>Toilet bowl final · wk ${cfg.start + 1}</h3>
+      ${match(bowlFinal, 'final bowl', 'Last place game', 'Loser finishes 12th')}</div>`;
+
+  const card = $(`<div class="card"><h2>${esc(cfg.title)}</h2>
+    <div class="scroll"><div class="br bowl">
+      <svg class="brlines" xmlns="http://www.w3.org/2000/svg"></svg>
+      ${col(0, `Round 1 · wk ${cfg.start}`)}${centre}${col(1, `Round 1 · wk ${cfg.start}`)}
+    </div></div>
+    <div class="consol"><div class="consolhead">Everyone who wins their way out</div>
+      ${semis.map(m => match(m, '', 'Game ' + m.m)).join('')}
+      ${escapes.map(m => match(m, '', cfg.places[m.p] || `Game ${m.m}`)).join('')}</div>
+    <div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">
+      Win here and you climb out of it; lose and you sink. The two byes skip week
+      ${cfg.start}, so the worst they can finish is 10th.</div></div>`);
+
+  const root = card.querySelector('.br');
+  root.__links = [];
+  if (r1[0]) root.__links.push([`m${r1[0].m}`, `m${bowlFinal.m}`, 'lr']);
+  if (r1[1]) root.__links.push([`m${r1[1].m}`, `m${bowlFinal.m}`, 'rl']);
+  const draw = () => drawLinks(root);
+  requestAnimationFrame(draw);
+  if ('ResizeObserver' in window) new ResizeObserver(draw).observe(root);
+  return card;
+}
+
 function cardBracket(L) {
   const start = (L.league.settings || {}).playoff_week_start || 15;
   const teams = (L.league.settings || {}).playoff_teams || 6;
@@ -555,11 +625,9 @@ function cardBracket(L) {
   });
   if (champs) out.push(champs);
 
-  const bowl = bracketFigure(L.losers, L, {
-    start, seedOffset: teams, title: 'Toilet bowl · everyone who missed the playoffs',
-    rounds: { 1: 'Round 1', 2: 'Round 2', 3: 'Final' },
-    places: { 1: '7th place', 3: '9th place', 5: '11th place' },
-    note: 'Whoever loses the 11th place game finishes last.',
+  const bowl = bowlFigure(L.losers, L, {
+    start, seedOffset: teams, title: 'Toilet bowl · a tournament for last place',
+    places: { 1: '7th place', 3: '9th place' },
   });
   if (bowl) out.push(bowl);
   return out;
