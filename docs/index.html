@@ -335,6 +335,8 @@ const CHALLENGES = [
     fmt: v => `K+DEF ${n2(v)} pts`, rows: (L, ms) => ms.map(m => ({ name: L.names[m.roster_id],
       value: starterPts(m).filter(([pid]) => ['K','DEF'].includes(L.pos[pid])).reduce((a, [, p]) => a + p, 0) })) },
   { week: 7,  title: 'Waiver-wire hero', note: 'Highest-scoring starter that roster did not draft',
+    needs: (L) => Object.keys(L.drafted || {}).length > 0,
+    needsWhy: 'waiting on draft results from Sleeper',
     fmt: v => `undrafted starter ${n2(v)} pts`, rows: (L, ms) => ms.map(m => {
       const own = L.drafted[m.roster_id] || new Set();
       return { name: L.names[m.roster_id], value: Math.max(0, ...starterPts(m).filter(([pid]) => !own.has(pid)).map(([, p]) => p)) }; }) },
@@ -372,12 +374,16 @@ function settle(L) {
     const scored = ms.some(m => m.points > 0);
     const done = now >= lock.getTime() && scored;
     let hs = { names: [] }, ch = { names: [] }, board = [];
+    // a challenge whose inputs are missing must not answer a different question
+    const blocked = done && c.needs && !c.needs(L) ? c.needsWhy : null;
     if (done) {
       hs = winners(ms.map(m => ({ name: L.names[m.roster_id], value: m.points })), false);
-      board = (c.rows(L, ms) || []).sort((a, b) => c.low ? a.value - b.value : b.value - a.value);
-      ch = winners(board, c.low);
+      if (!blocked) {
+        board = (c.rows(L, ms) || []).sort((a, b) => c.low ? a.value - b.value : b.value - a.value);
+        ch = winners(board, c.low);
+      }
     }
-    out.push({ ...c, lock, done, scored, matchups: ms, high: hs, chal: ch, board });
+    out.push({ ...c, lock, done, scored, blocked, matchups: ms, high: hs, chal: ch, board });
   }
   return out;
 }
@@ -411,8 +417,10 @@ function cardWeekTable(season) {
       <td>${cell(w.high.names)}</td>
       <td><span class="title">${esc(w.title)}</span>${next && w.week === next.week ? '<span class="chip up">up next</span>' : ''}
           <div class="note">${esc(w.note)}</div>
-          <div style="margin-top:4px">${cell(w.chal.names)}${w.done && w.chal.best !== null && w.chal.names.length
-            ? ` <span class="pending">· ${esc(w.fmt(w.chal.best))}</span>` : ''}</div></td>
+          <div style="margin-top:4px">${w.blocked
+            ? `<span class="pending">${esc(w.blocked)}</span>`
+            : cell(w.chal.names) + (w.done && w.chal.best !== null && w.chal.names.length
+                ? ` <span class="pending">· ${esc(w.fmt(w.chal.best))}</span>` : '')}</div></td>
     </tr>`).join('');
   return $(`<div class="card"><h2>How to win money each week</h2>
     <div class="scroll"><table class="sched">
