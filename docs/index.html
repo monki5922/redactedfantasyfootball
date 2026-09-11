@@ -65,6 +65,12 @@ header { margin-bottom: 28px; display: flex; align-items: flex-start;
              font-weight: 650; font-size: 14px; }
 .wrow .amt.zero { color: var(--muted); font-weight: 500; }
 .track, .potbar { background: var(--track); border-radius: 0 5px 5px 0; }
+.track { position: relative; }
+.proj { position: absolute; top: 0; left: var(--l); width: 0; height: 100%;
+        border: 1.5px dashed var(--bar); border-left: 0; border-radius: 0 4px 4px 0;
+        opacity: 0; transition: width 900ms cubic-bezier(.22,.85,.3,1), opacity 500ms; }
+.lit .proj { width: var(--w); opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .proj { transition: none; } }
 .track { height: 10px; }
 .potbar { height: 8px; }
 .fill { height: 100%; background: var(--bar); width: 0;
@@ -591,15 +597,38 @@ function cardBracket(L) {
   return out;
 }
 
-function cardWinnings(rows) {
+/* Current seed per manager. Before any game is played every roster has zero
+   wins and zero points, so the order would just be roster id - in that case
+   there is no seed to project from and we say so by returning nothing. */
+function seedMap(L) {
+  const rs = L.rosters || [];
+  const started = rs.some(r => (r.settings || {}).wins || (r.settings || {}).fpts);
+  if (!started) return null;
+  const val = (r) => { const st = r.settings || {};
+    return [st.wins || 0, (st.fpts || 0) + (st.fpts_decimal || 0) / 100]; };
+  const out = {};
+  [...rs].sort((a, z) => { const [aw, af] = val(a), [zw, zf] = val(z);
+                           return (zw - aw) || (zf - af); })
+    .forEach((r, i) => { out[L.names[r.roster_id]] = i + 1; });
+  return out;
+}
+
+function cardWinnings(rows, L) {
   const paid = rows.reduce((a, r) => a + r.total, 0);
   const POT = BUY_IN * LEAGUE_SIZE;
-  const leader = Math.max(...rows.map(r => r.total), 0);
+  const seeds = seedMap(L);
+  const prizeFor = (name) => (seeds && SEASON_PRIZES[seeds[name]]) || 0;
+  const projOf = (r) => r.total + prizeFor(r.name);
+  // the scale has to hold the projections, or a dashed line would run off the track
+  const leader = Math.max(...rows.map(projOf), ...rows.map(r => r.total), 0);
 
   const row = (r, i) => {
     const pct = leader ? (r.total / leader) * 100 : 0;
+    const prize = prizeFor(r.name);
+    const projPct = leader ? (projOf(r) / leader) * 100 : 0;
     const share = POT ? (r.total / POT) * 100 : 0;
     const bits = [];
+    if (prize) bits.push(`${seeds[r.name]} seed · ${money(prize)} if it holds`);
     if (r.high) bits.push(`${r.high} high score`);
     if (r.chal) bits.push(`${r.chal} challenge${r.chal > 1 ? 's' : ''}`);
     if (r.total) bits.push(`${share.toFixed(1)}% of pot`);
@@ -613,7 +642,10 @@ function cardWinnings(rows) {
              <div class="meta">${esc(meta)}</div></div>
         <div class="track"><div class="fill${r.total ? '' : ' nil'}"
              style="--w:${pct.toFixed(2)}%; transition-delay:${i * 55}ms;
-                    animation-delay:${i * 55}ms"></div></div>
+                    animation-delay:${i * 55}ms"></div>${prize ? `
+          <div class="proj" style="--l:${pct.toFixed(2)}%; --w:${(projPct - pct).toFixed(2)}%;
+               transition-delay:${i * 55 + 260}ms"
+               title="${esc(r.name)} is the ${seeds[r.name]} seed — ${money(prize)} more if the season ended today"></div>` : ''}</div>
         <div class="amt${r.total ? '' : ' zero'}">${r.total ? usd(r.total) : usd(0)}</div>
       </div>`;
   };
@@ -633,7 +665,7 @@ function cardWinnings(rows) {
     </div>
     ${rows.map(row).join('')}
     <div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">
-      Bars are scaled to the current leader. Season prizes (1st ${money(120)},
+      ${seeds ? 'The dashed gold extension is the season prize each of the top three seeds would add if the standings held. ' : ''}Bars are scaled to the highest projected total. Season prizes (1st ${money(120)},
       2nd ${money(50)}, 3rd ${money(25)}) are settled after the playoffs and are
       not counted here.</div></div>`);
 
@@ -686,7 +718,7 @@ function paint(L) {
     <strong>No results yet</strong>The first week settles the Tuesday after it wraps up.</div></div>`));
   app.append(cardWeekTable(season));
   cardBracket(L).forEach(c => app.append(c));
-  app.append(cardWinnings(winningsTable(L, season)));
+  app.append(cardWinnings(winningsTable(L, season), L));
 
   const next = season.find(w => !w.done);
   sub.textContent = 'Live from Sleeper · checked ' +
