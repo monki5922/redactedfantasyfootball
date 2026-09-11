@@ -138,10 +138,20 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 3
 .sched tr.now { background: var(--accent-soft); }
 .sched tr.now .wk { color: var(--accent); }
 .pending { color: var(--muted); }
-.br { position: relative; display: grid; align-items: center; gap: 0 26px;
-      grid-template-columns: repeat(2, minmax(130px, 1fr)) minmax(150px, 1.1fr)
-                             repeat(2, minmax(130px, 1fr));
-      min-width: 764px; }
+.br { position: relative; display: grid; align-items: stretch; gap: 0 24px;
+      grid-template-columns: repeat(3, minmax(148px, 1fr)); min-width: 520px; }
+.col > h3 { text-align: left; margin-bottom: 12px; }
+.col > h3 span { display: block; margin-top: 3px; color: var(--muted);
+                 font-weight: 500; text-transform: none; letter-spacing: 0; }
+.games { flex: 1; display: flex; flex-direction: column;
+         justify-content: space-around; gap: 18px; }
+.m.bye { border-style: dashed; background: transparent; display: flex;
+         align-items: center; justify-content: space-between; }
+.m.bye .team { border: 0; }
+.m.bye .byelabel { padding: 10px 11px; font-size: 11px; font-weight: 600;
+                   letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.m.final.gold { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+.m.final.gold .cap { color: var(--gold); background: var(--gold-soft); }
 .brlines { position: absolute; inset: 0; width: 100%; height: 100%;
            pointer-events: none; overflow: visible; }
 .brlines path { fill: none; stroke: var(--wire); stroke-width: 1.5;
@@ -159,12 +169,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 3
 .m .team + .team { border-top: 1px solid var(--line); }
 .m .slot { color: var(--muted); font-style: italic; font-size: 12.5px; }
 .m .team.win { background: var(--accent-soft); font-weight: 650; }
-.m.final { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
-.m.final .cap { color: var(--gold); background: var(--gold-soft); }
-.m.bye { border-style: dashed; background: transparent; }
-.m.bye .cap { background: transparent; }
-.m.bye .note2 { padding: 8px 11px; font-size: 12px; color: var(--muted);
-                border-top: 1px solid var(--line); }
+
 .m .pts { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted);
             font-size: 12.5px; }
 .m.final.bowl { border-color: #a04b3c; box-shadow: 0 0 0 3px rgba(160,75,60,.13); }
@@ -255,7 +260,7 @@ async function loadLeague() {
   const names = {}; rosters.forEach(r => names[r.roster_id] = uname[r.owner_id] || 'unknown');
   const slots = league.roster_positions.filter(p => p !== 'BN');
 
-  const upto = Math.min(SEASON_WEEKS + 3, Math.max(state.week, 1));
+  const upto = Math.min(SEASON_WEEKS, Math.max(state.week, 1));
   const mws = await Promise.all(Array.from({ length: upto }, (_, i) =>
     j(`${API}/league/${LEAGUE_ID}/matchups/${i + 1}`).catch(() => [])));
   const weeks = {}; mws.forEach((m, i) => weeks[i + 1] = m || []);
@@ -442,13 +447,13 @@ function cardLatest(L, season) {
         <td class="n">${n2(m.points)}</td></tr>`).join('')}</tbody></table></div></div>`);
 }
 
-/* A 6-team bracket: two first-round games, two byes, converging on a final in
-   the middle. Both of Sleeper's brackets share this shape, so one renderer does
-   the playoffs and the toilet bowl - only the labels differ. */
+/* Sleeper's bracket shape, drawn the way Sleeper draws it: one column per week,
+   left to right. Both the playoffs and the toilet bowl use this - the only
+   difference is what the placement games are called. In the toilet bowl you
+   advance by losing, so its p=1 game crowns last place. */
 function bracketFigure(b, L, cfg) {
   if (!b || !b.length) return null;
   const seeded = L.state.week >= cfg.start;
-  const by = {}; b.forEach(m => by[m.m] = m);
   const rounds = {}; b.forEach(m => (rounds[m.r] = rounds[m.r] || []).push(m));
 
   const named = (rid) => (seeded && rid) ? L.names[rid] : null;
@@ -456,67 +461,52 @@ function bracketFigure(b, L, cfg) {
     const nm = named(m[k]);
     if (nm) return `<span>${esc(nm)}</span>`;
     const src = m[k + '_from'] || {};
-    if (src.w) return `<span class="slot">winner of game ${src.w}</span>`;
-    if (src.l) return `<span class="slot">loser of game ${src.l}</span>`;
+    if (src.w) return `<span class="slot">${esc(cfg.advance)} of game ${src.w}</span>`;
+    if (src.l) return `<span class="slot">${esc(cfg.drop)} of game ${src.l}</span>`;
     return '<span class="slot">seed TBD</span>';
   };
   const team = (m, k) =>
     `<div class="team${seeded && m.w && m.w === m[k] ? ' win' : ''}">${slot(m, k)}</div>`;
-  const match = (m, cls, cap) =>
+  const match = (m, cap, cls) =>
     `<div class="m${cls ? ' ' + cls : ''}" data-id="m${m.m}">
        <div class="cap">${esc(cap)}</div>${team(m, 't1')}${team(m, 't2')}</div>`;
 
-  // round 1 games and, feeding the same round-2 games, the two byes
   const r1 = (rounds[1] || []).sort((a, z) => a.m - z.m);
-  const semis = (rounds[2] || []).filter(m => !m.p).sort((a, z) => a.m - z.m);
-  const final = (rounds[3] || []).find(m => m.p === 1) || (rounds[3] || [])[0];
-  const placings = b.filter(m => m.p && m !== final).sort((a, z) => a.p - z.p);
+  const r2 = (rounds[2] || []).filter(m => !m.p).sort((a, z) => a.m - z.m);
+  const final = (rounds[3] || []).find(m => m.p === 1);
+  const places = b.filter(m => m.p && m !== final).sort((a, z) => a.r - z.r || a.p - z.p);
 
-  const byeCard = (semi, i) => {
-    const nm = named(semi.t1);
-    const seed = cfg.seedOffset + i + 1;
-    return `<div class="m bye" data-id="bye${semi.m}">
-      <div class="cap">Bye · week ${cfg.start}</div>
-      <div class="team">${nm ? `<span>${esc(nm)}</span>`
-        : `<span class="slot">${seed} seed</span>`}</div>
-      <div class="note2">straight through to week ${cfg.start + 1}</div></div>`;
-  };
+  // a round-2 side with no _from is a bye: that seed sat out round 1
+  const byeCard = (semi) => `<div class="m bye" data-id="bye${semi.m}">
+      <div class="team">${named(semi.t1) ? `<span>${esc(named(semi.t1))}</span>`
+        : '<span class="slot">seed TBD</span>'}</div>
+      <div class="byelabel">Bye</div></div>`;
 
-  const side = (i) => {
-    const semi = semis[i]; if (!semi) return ['', ''];
-    const g = r1[i];
-    return [
-      `<div class="col"><h3>${esc(cfg.rounds[1])} · wk ${cfg.start}</h3>
-         ${g ? match(g, '', 'Game ' + g.m) : ''}${byeCard(semi, i)}</div>`,
-      `<div class="col"><h3>${esc(cfg.rounds[2])} · wk ${cfg.start + 1}</h3>
-         ${match(semi, '', 'Game ' + semi.m)}</div>`];
-  };
-  const [L1, L2] = side(0), [R2, R1] = side(1).reverse();
-
-  const centre = `<div class="col"><h3>${esc(cfg.rounds[3])} · wk ${cfg.start + 2}</h3>
-      ${final ? match(final, 'final', cfg.places[final.p] || 'Final') : ''}</div>`;
-
-  const consol = placings.length ? `<div class="consol">${placings.map(m =>
-      match(m, '', cfg.places[m.p] || `Game ${m.m}`)).join('')}</div>` : '';
+  const col1 = `<div class="col"><h3>Round 1<span>Week ${cfg.start}</span></h3>
+      <div class="games">${r2.map((semi, i) =>
+        (r1[i] ? match(r1[i], 'Game ' + r1[i].m) : '') + byeCard(semi)).join('')}</div></div>`;
+  const col2 = `<div class="col"><h3>Round 2<span>Week ${cfg.start + 1}</span></h3>
+      <div class="games">${r2.map(m => match(m, 'Game ' + m.m)).join('')}</div></div>`;
+  const col3 = `<div class="col"><h3>Finals<span>Week ${cfg.start + 2}</span></h3>
+      <div class="games">${final ? match(final, cfg.places[1], 'final ' + cfg.finalCls) : ''}</div></div>`;
 
   const card = $(`<div class="card"><h2>${esc(cfg.title)}</h2>
     <div class="scroll"><div class="br">
       <svg class="brlines" xmlns="http://www.w3.org/2000/svg"></svg>
-      ${L1}${L2}${centre}${R2}${R1}
-    </div></div>${consol}
+      ${col1}${col2}${col3}
+    </div></div>
+    ${places.length ? `<div class="consol"><div class="consolhead">Placement games</div>
+      ${places.map(m => match(m, `${cfg.places[m.p] || 'Game ' + m.m} · wk ${cfg.start + m.r - 1}`)).join('')}</div>` : ''}
     ${cfg.note ? `<div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">${esc(cfg.note)}</div>` : ''}
     </div>`);
 
-  // connectors, measured from the laid-out DOM so card heights don't matter
-  const links = [];
-  semis.forEach((semi, i) => {
-    const dir = i === 0 ? 'lr' : 'rl';
-    if (r1[i]) links.push([`m${r1[i].m}`, `m${semi.m}`, dir]);
-    links.push([`bye${semi.m}`, `m${semi.m}`, dir]);
-    if (final) links.push([`m${semi.m}`, `m${final.m}`, dir]);
-  });
   const root = card.querySelector('.br');
-  root.__links = links;
+  root.__links = [];
+  r2.forEach((semi, i) => {
+    if (r1[i]) root.__links.push([`m${r1[i].m}`, `m${semi.m}`, 'lr']);
+    root.__links.push([`bye${semi.m}`, `m${semi.m}`, 'lr']);
+    if (final) root.__links.push([`m${semi.m}`, `m${final.m}`, 'lr']);
+  });
   const draw = () => drawLinks(root);
   requestAnimationFrame(draw);
   if ('ResizeObserver' in window) new ResizeObserver(draw).observe(root);
@@ -545,124 +535,27 @@ function drawLinks(root) {
   svg.innerHTML = d.map(p => `<path d="${p}"/>`).join('');
 }
 
-/* Final standings: wins, then points for - Sleeper's own tiebreak. */
-function seedOrder(L) {
-  const val = (r) => {
-    const st = r.settings || {};
-    return [st.wins || 0, (st.fpts || 0) + (st.fpts_decimal || 0) / 100];
-  };
-  return [...(L.rosters || [])]
-    .sort((a, z) => { const [aw, af] = val(a), [zw, zf] = val(z);
-                      return (zw - aw) || (zf - af); })
-    .map(r => r.roster_id);
-}
-
-/* The league's toilet bowl, which Sleeper cannot model: the worst two seeds get
-   the byes, you advance by LOSING, and the final lands in week 17 alongside the
-   championship. Sleeper pairs different teams in weeks 15-17, so each game is
-   settled on the two rosters' scores that week rather than on its bracket. */
-function bowlBracket(L) {
-  const order = seedOrder(L);
-  if (order.length < 12) return null;
-  const start = (L.league.settings || {}).playoff_week_start || 15;
-  const cut = (L.league.settings || {}).playoff_teams || 6;
-  const live = L.state.week > SEASON_WEEKS;
-  const seed = (n) => (live ? order[n - 1] : null);
-
-  const ptsOf = (week, rid) => {
-    if (!rid) return null;
-    const m = (L.weeks[week] || []).find(x => x.roster_id === rid);
-    return m && m.points ? m.points : null;
-  };
-  const game = (n, week, aId, bId, aLabel, bLabel) => {
-    const pa = ptsOf(week, aId), pb = ptsOf(week, bId);
-    const decided = pa !== null && pb !== null && pa !== pb;
-    return { n, week, a: aId, b: bId, aLabel, bLabel, pa, pb,
-             loser: decided ? (pa < pb ? aId : bId) : null,
-             winner: decided ? (pa < pb ? bId : aId) : null };
-  };
-
-  const g1 = game(1, start, seed(cut + 4), seed(cut + 1), `${cut + 4} seed`, `${cut + 1} seed`);
-  const g2 = game(2, start, seed(cut + 3), seed(cut + 2), `${cut + 3} seed`, `${cut + 2} seed`);
-  const g3 = game(3, start + 1, seed(cut + 6), g1.loser, `${cut + 6} seed`, 'loser of game 1');
-  const g4 = game(4, start + 1, seed(cut + 5), g2.loser, `${cut + 5} seed`, 'loser of game 2');
-  const fin = game(5, start + 2, g3.loser, g4.loser, 'loser of game 3', 'loser of game 4');
-  return { start, cut, live, g1, g2, g3, g4, fin,
-           byes: [{ seed: cut + 6, rid: seed(cut + 6) }, { seed: cut + 5, rid: seed(cut + 5) }] };
-}
-
-/* The toilet bowl, drawn like the championship: two flanks converging on a
-   week 17 final. You advance by losing, so the slots read "loser of game N"
-   and the bye cards belong to the two worst seeds. */
-function bowlFigure(L, cfg) {
-  const B = bowlBracket(L);
-  if (!B) return null;
-
-  const nm = (rid) => (rid && L.names[rid]) || null;
-  const slot = (g, side) => {
-    const rid = side === 'a' ? g.a : g.b;
-    const label = side === 'a' ? g.aLabel : g.bLabel;
-    const pts = side === 'a' ? g.pa : g.pb;
-    const who = nm(rid);
-    return `<div class="team${g.loser && rid === g.loser ? ' win' : ''}">
-      ${who ? `<span>${esc(who)}</span>` : `<span class="slot">${esc(label)}</span>`}
-      ${pts !== null ? `<span class="pts">${n2(pts)}</span>` : ''}</div>`;
-  };
-  const match = (g, cap, cls, foot) =>
-    `<div class="m${cls ? ' ' + cls : ''}" data-id="g${g.n}">
-       <div class="cap">${esc(cap)}</div>${slot(g, 'a')}${slot(g, 'b')}
-       ${foot ? `<div class="note2">${esc(foot)}</div>` : ''}</div>`;
-
-  const byeCard = (b, gameN) =>
-    `<div class="m bye" data-id="bye${gameN}">
-       <div class="cap">Bye · week ${B.start}</div>
-       <div class="team">${nm(b.rid) ? `<span>${esc(nm(b.rid))}</span>`
-         : `<span class="slot">${b.seed} seed</span>`}</div>
-       <div class="note2">worst two seeds sit out week ${B.start}</div></div>`;
-
-  const flank = (g, bye, semi, head) => `<div class="col"><h3>${esc(head)}</h3>
-      ${match(g, 'Game ' + g.n, '', 'loser advances')}${byeCard(bye, semi.n)}</div>`;
-  const mid = (semi) => `<div class="col"><h3>Round 2 · wk ${B.start + 1}</h3>
-      ${match(semi, 'Game ' + semi.n, '', 'loser advances')}</div>`;
-
-  const centre = `<div class="col"><h3>Last place · wk ${B.start + 2}</h3>
-      ${match(B.fin, 'Last place game', 'final bowl', 'Loser finishes last')}</div>`;
-
-  const card = $(`<div class="card"><h2>${esc(cfg.title)}</h2>
-    <div class="scroll"><div class="br">
-      <svg class="brlines" xmlns="http://www.w3.org/2000/svg"></svg>
-      ${flank(B.g1, B.byes[0], B.g3, `Round 1 · wk ${B.start}`)}
-      ${mid(B.g3)}${centre}${mid(B.g4)}
-      ${flank(B.g2, B.byes[1], B.g4, `Round 1 · wk ${B.start}`)}
-    </div></div>
-    <div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">
-      Lose and you sink; win and you are safe. Seeds ${B.cut + 5} and ${B.cut + 6}
-      start on a bye. Sleeper pairs different opponents in weeks ${B.start}–${B.start + 2},
-      so each game here is settled on the two managers' scores that week.</div></div>`);
-
-  const root = card.querySelector('.br');
-  root.__links = [['g1', 'g3', 'lr'], ['bye3', 'g3', 'lr'], ['g3', 'g5', 'lr'],
-                  ['g2', 'g4', 'rl'], ['bye4', 'g4', 'rl'], ['g4', 'g5', 'rl']];
-  const draw = () => drawLinks(root);
-  requestAnimationFrame(draw);
-  if ('ResizeObserver' in window) new ResizeObserver(draw).observe(root);
-  return card;
-}
-
 function cardBracket(L) {
-  const start = (L.league.settings || {}).playoff_week_start || 15;
-  const teams = (L.league.settings || {}).playoff_teams || 6;
+  const st = L.league.settings || {};
+  const start = st.playoff_week_start || 15;
+  const teams = st.playoff_teams || 6;
   const out = [];
   const champs = bracketFigure(L.bracket, L, {
-    start, seedOffset: 0, title: `Playoffs · top ${teams} · weeks ${start}–${start + 2}`,
-    rounds: { 1: 'Wild card', 2: 'Semifinals', 3: 'Championship' },
+    start, title: `Playoffs · top ${teams} · weeks ${start}–${start + 2}`,
+    advance: 'winner', drop: 'loser', finalCls: 'gold',
     places: { 1: 'Championship', 3: '3rd place', 5: '5th place' },
     note: L.state.week >= start ? '' :
-      `Seeds are set after week ${start - 1}. The top two seeds sit out the wild card round.`,
+      `Seeds are set after week ${start - 1}. The top two seeds get a first-round bye.`,
   });
   if (champs) out.push(champs);
 
-  const bowl = bowlFigure(L, { title: 'Toilet bowl · a tournament for last place' });
+  const bowl = bracketFigure(L.losers, L, {
+    start, title: 'Toilet bowl · a tournament for last place',
+    advance: 'winner', drop: 'loser', finalCls: 'bowl',
+    places: { 1: '💩 King (Last Place)', 3: '10th place', 5: '8th place' },
+    note: L.state.week >= start ? '' :
+      `The bottom six after week ${start - 1}, with the worst two seeds on a bye.`,
+  });
   if (bowl) out.push(bowl);
   return out;
 }
