@@ -37,6 +37,18 @@ header { margin-bottom: 28px; display: flex; align-items: flex-start;
 .err { color: #c0392b; font-size: 13px; }
 @media (prefers-color-scheme: dark) { .err { color: #ff8a7a; } }
 .money { font-variant-numeric: tabular-nums; font-weight: 650; }
+.seg { display: inline-flex; gap: 3px; margin: 20px 0 4px; padding: 3px;
+       background: var(--bg); border: 1px solid var(--line); border-radius: 999px; }
+.seg button { font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 14px;
+              border: 0; border-radius: 999px; cursor: pointer;
+              background: transparent; color: var(--muted); }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-current="true"] { background: var(--panel); color: var(--ink);
+                                   box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.lbhead { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+          color: var(--muted); font-weight: 600; margin: 20px 0 4px; }
+.lb { margin-top: 10px; }
+[hidden] { display: none !important; }
 .total td { border-top: 2px solid var(--line); font-weight: 700; }
 
 /* Ranked winnings chart. One series -> one fill; bar length is the only
@@ -231,6 +243,7 @@ const API = 'https://api.sleeper.app/v1';
 const HIGH_SCORE_PRIZE = 5.00, CHALLENGE_PRIZE = 2.50, SEASON_WEEKS = 14;
 const BUY_IN = 25.00, LEAGUE_SIZE = 12;
 const SEASON_PRIZES = { 1: 120, 2: 50, 3: 25 };
+const HAS_HIGH_SCORE = HIGH_SCORE_PRIZE > 0;
 const SEASON_TOTAL_WEEKLY = (HIGH_SCORE_PRIZE + CHALLENGE_PRIZE) * SEASON_WEEKS;
 const WEEKLY_LABEL = `Weekly · ${SEASON_WEEKS} wks`;
 const POS_KEY = 'ffp.positions.v1', SNAP_KEY = 'ffp.snapshot.v1';
@@ -440,6 +453,7 @@ function cardLatest(L, season) {
   const done = season.filter(w => w.done);
   if (!done.length) return null;
   const w = done[done.length - 1];
+
   const prize = (kind, label, res, detail) => {
     const pot = kind === 'hs' ? HIGH_SCORE_PRIZE : CHALLENGE_PRIZE;
     const share = res.names.length > 1
@@ -448,125 +462,50 @@ function cardLatest(L, season) {
       <div class="who">${res.names.length ? esc(res.names.join(', ')) : 'No winner'}</div>
       <div class="detail">${res.names.length ? esc(detail) + share : 'nobody qualified this week'}</div></div>`;
   };
-  const scores = [...w.matchups].sort((a, b) => b.points - a.points);
-  const winSet = new Set([...w.high.names, ...w.chal.names]);
-  return $(`<div class="card"><h2>Week ${w.week} — latest result</h2>
-    <div class="prizes">
-      ${prize('hs', 'High score', w.high, w.high.best === null ? '' : `${n2(w.high.best)} pts`)}
+
+  /* One leaderboard builder for both views: rank, manager, value, with the
+     week's winners flagged. */
+  const board = (rows, valueHead, fmtVal, winners) => {
+    const win = new Set(winners.map(n => n.split(' (wk')[0]));
+    return `<div class="scroll lb"><table>
+      <thead><tr><th class="rank">#</th><th>Manager</th><th class="n">${esc(valueHead)}</th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr class="${win.has(r.name) ? 'win' : ''}">
+        <td class="rank">${i + 1}</td><td>${esc(r.name)}</td>
+        <td class="n">${esc(fmtVal(r.value))}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+
+  const scoreRows = [...w.matchups].sort((a, b) => b.points - a.points)
+    .map(m => ({ name: L.names[m.roster_id], value: m.points }));
+  const chalRows = w.board || [];
+
+  const scoreLb = board(scoreRows, 'Points', n2, w.high.names);
+  const chalLb = chalRows.length
+    ? board(chalRows, 'Result', w.fmt, w.chal.names)
+    : `<div class="empty" style="padding:22px 0">Nothing to rank for this challenge.</div>`;
+
+  const card = $(`<div class="card"><h2>Week ${w.week} — latest result</h2>
+    <div class="prizes"${HAS_HIGH_SCORE ? '' : ' style="grid-template-columns:1fr"'}>
+      ${HAS_HIGH_SCORE ? prize('hs', 'High score', w.high, w.high.best === null ? '' : `${n2(w.high.best)} pts`) : ''}
       ${prize('ch', w.title, w.chal, w.chal.best === null ? '' : w.fmt(w.chal.best))}
     </div>
-    <div class="scroll" style="margin-top:18px"><table>
-      <thead><tr><th class="rank">#</th><th>Manager</th><th class="n">Points</th></tr></thead>
-      <tbody>${scores.map((m, i) => `<tr class="${winSet.has(L.names[m.roster_id]) ? 'win' : ''}">
-        <td class="rank">${i + 1}</td><td>${esc(L.names[m.roster_id])}</td>
-        <td class="n">${n2(m.points)}</td></tr>`).join('')}</tbody></table></div></div>`);
-}
-
-/* Sleeper's bracket shape, drawn the way Sleeper draws it: one column per week,
-   left to right. Both the playoffs and the toilet bowl use this - the only
-   difference is what the placement games are called. In the toilet bowl you
-   advance by losing, so its p=1 game crowns last place. */
-function bracketFigure(b, L, cfg) {
-  if (!b || !b.length) return null;
-  const seeded = L.state.week >= cfg.start;
-  const rounds = {}; b.forEach(m => (rounds[m.r] = rounds[m.r] || []).push(m));
-  const r1 = (rounds[1] || []).sort((a, z) => a.m - z.m);
-  const r2 = (rounds[2] || []).filter(m => !m.p).sort((a, z) => a.m - z.m);
-
-  const named = (rid) => (seeded && rid) ? L.names[rid] : null;
-
-  // Fixed 6-team bracket: seeds 1 and 2 sit out round 1, the top seed meets the
-  // winner of 4v5 and the second seed the winner of 3v6. Confirmed against the
-  // league's own bracket, where the 12 seed drew the 9v8 winner.
-  const R1_SEEDS = [[4, 5], [3, 6]];
-  const seedAt = (m, k) => {
-    const i = r1.indexOf(m);
-    if (i > -1 && R1_SEEDS[i]) return R1_SEEDS[i][k === 't1' ? 0 : 1];
-    const j = r2.indexOf(m);
-    if (j > -1 && k === 't1') return j + 1;          // the bye seeds, 1 then 2
-    return null;
-  };
-  // in the toilet bowl the bracket's 1 seed is the league's worst finisher
-  const place = (n) => cfg.invertSeeds ? (cfg.totalTeams + 1 - n) : n;
-  const seedText = (m, k) => {
-    const n = seedAt(m, k);
-    return n ? `${place(n)} seed` : 'seed TBD';
-  };
-
-  const slot = (m, k) => {
-    const nm = named(m[k]);
-    if (nm) return `<span>${esc(nm)}</span>`;
-    const src = m[k + '_from'] || {};
-    if (src.w) return `<span class="slot">${esc(cfg.advance)} of game ${src.w}</span>`;
-    if (src.l) return `<span class="slot">${esc(cfg.drop)} of game ${src.l}</span>`;
-    return `<span class="slot">${esc(seedText(m, k))}</span>`;
-  };
-  const team = (m, k) =>
-    `<div class="team${seeded && m.w && m.w === m[k] ? ' win' : ''}">${slot(m, k)}</div>`;
-  const match = (m, cap, cls) =>
-    `<div class="m${cls ? ' ' + cls : ''}" data-id="m${m.m}">
-       <div class="cap">${esc(cap)}</div>${team(m, 't1')}${team(m, 't2')}</div>`;
-
-  const final = (rounds[3] || []).find(m => m.p === 1);
-  const places = b.filter(m => m.p && m !== final).sort((a, z) => a.r - z.r || a.p - z.p);
-
-  // a round-2 side with no _from is a bye: that seed sat out round 1
-  const byeCard = (semi) => `<div class="m bye" data-id="bye${semi.m}">
-      <div class="team">${named(semi.t1) ? `<span>${esc(named(semi.t1))}</span>`
-        : `<span class="slot">${esc(seedText(semi, 't1'))}</span>`}</div>
-      <div class="byelabel">Bye</div></div>`;
-
-  const col1 = `<div class="col"><h3>Round 1<span>Week ${cfg.start}</span></h3>
-      <div class="games">${r2.map((semi, i) =>
-        (r1[i] ? match(r1[i], 'Game ' + r1[i].m) : '') + byeCard(semi)).join('')}</div></div>`;
-  const col2 = `<div class="col"><h3>Round 2<span>Week ${cfg.start + 1}</span></h3>
-      <div class="games">${r2.map(m => match(m, 'Game ' + m.m)).join('')}</div></div>`;
-  const col3 = `<div class="col"><h3>Finals<span>Week ${cfg.start + 2}</span></h3>
-      <div class="games">${final ? match(final, cfg.places[1], 'final ' + cfg.finalCls) : ''}</div></div>`;
-
-  const card = $(`<div class="card"><h2>${esc(cfg.title)}</h2>
-    <div class="scroll"><div class="br">
-      <svg class="brlines" xmlns="http://www.w3.org/2000/svg"></svg>
-      ${col1}${col2}${col3}
-    </div></div>
-    ${places.length ? `<div class="consol"><div class="consolhead">Placement games</div>
-      ${places.map(m => match(m, `${cfg.places[m.p] || 'Game ' + m.m} · wk ${cfg.start + m.r - 1}`)).join('')}</div>` : ''}
-    ${cfg.note ? `<div class="note" style="margin-top:14px;color:var(--muted);font-size:13px">${esc(cfg.note)}</div>` : ''}
+    ${HAS_HIGH_SCORE ? `
+      <div class="seg" role="tablist">
+        <button data-tab="chal" aria-current="true">${esc(w.title)}</button>
+        <button data-tab="score" aria-current="false">Total score</button>
+      </div>
+      <div data-pane="chal">${chalLb}</div>
+      <div data-pane="score" hidden>${scoreLb}</div>`
+    : `<h3 class="lbhead">${esc(w.title)} — week ${w.week} standings</h3>${chalLb}`}
     </div>`);
 
-  const root = card.querySelector('.br');
-  root.__links = [];
-  r2.forEach((semi, i) => {
-    if (r1[i]) root.__links.push([`m${r1[i].m}`, `m${semi.m}`, 'lr']);
-    root.__links.push([`bye${semi.m}`, `m${semi.m}`, 'lr']);
-    if (final) root.__links.push([`m${semi.m}`, `m${final.m}`, 'lr']);
+  const seg = card.querySelector('.seg');
+  if (seg) seg.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-tab]');
+    if (!b) return;
+    seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-current', String(x === b)));
+    card.querySelectorAll('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== b.dataset.tab; });
   });
-  const draw = () => drawLinks(root);
-  requestAnimationFrame(draw);
-  if ('ResizeObserver' in window) new ResizeObserver(draw).observe(root);
   return card;
-}
-
-function drawLinks(root) {
-  const svg = root.querySelector('svg.brlines');
-  const R = root.getBoundingClientRect();
-  if (!R.width) return;
-  const box = (id) => {
-    const el = root.querySelector(`[data-id="${id}"]`);
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    return { l: r.left - R.left, r: r.right - R.left, y: r.top - R.top + r.height / 2 };
-  };
-  const d = [];
-  for (const [from, to, dir] of (root.__links || [])) {
-    const a = box(from), z = box(to);
-    if (!a || !z) continue;
-    const [ax, zx] = dir === 'lr' ? [a.r, z.l] : [a.l, z.r];
-    const mid = (ax + zx) / 2;
-    d.push(`M${ax.toFixed(1)} ${a.y.toFixed(1)}H${mid.toFixed(1)}V${z.y.toFixed(1)}H${zx.toFixed(1)}`);
-  }
-  svg.setAttribute('viewBox', `0 0 ${R.width} ${R.height}`);
-  svg.innerHTML = d.map(p => `<path d="${p}"/>`).join('');
 }
 
 function cardBracket(L) {
